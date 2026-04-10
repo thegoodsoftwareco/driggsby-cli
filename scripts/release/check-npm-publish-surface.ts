@@ -23,7 +23,9 @@ type PackageJson = {
   artifactDownloadUrls?: unknown;
   bin?: unknown;
   glibcMinimum?: unknown;
+  license?: unknown;
   name?: unknown;
+  repository?: unknown;
   scripts?: unknown;
   supportedPlatforms?: unknown;
   version?: unknown;
@@ -105,6 +107,12 @@ function assertPackageContract(publishDir: string, relativeFiles: string[]): voi
   );
 
   assertEqual(packageJson.name, expectedPackageName, "package.json name");
+  assertEqual(packageJson.license, "Apache-2.0", "package.json license");
+  assertEqual(
+    packageJson.repository,
+    `https://github.com/${expectedRepository}`,
+    "package.json repository",
+  );
   assertEqual(version, version.trim(), "package.json version must be trimmed");
   assertMatchingVersion(version);
   assertExpectedBin(packageJson.bin);
