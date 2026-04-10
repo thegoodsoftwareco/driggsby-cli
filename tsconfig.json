@@ -18,5 +18,5 @@
     "types": ["node"],
     "verbatimModuleSyntax": true
   },
-  "include": ["scripts/**/*.ts"]
+  "include": ["npm/**/*.ts", "scripts/**/*.ts"]
 }

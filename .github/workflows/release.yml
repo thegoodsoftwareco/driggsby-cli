@@ -76,10 +76,51 @@ jobs:
       - name: Audit Rust dependencies
         run: cargo audit --deny warnings
 
+  verify:
+    needs:
+      - verify-release-target
+    runs-on: "ubuntu-22.04"
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install Node dependencies
+        run: npm ci
+      - name: Typecheck npm package tooling
+        run: npm run check
+      - name: Build npm package tooling
+        run: npm run build
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Lint Rust libraries and binaries
+        run: |
+          cargo clippy --workspace --lib --bins --examples --all-features -- \
+            -D warnings -D clippy::unwrap_used -D clippy::expect_used \
+            -D clippy::panic -D clippy::todo -D clippy::unimplemented \
+            -D clippy::undocumented_unsafe_blocks
+      - name: Lint Rust tests
+        run: |
+          cargo clippy --workspace --tests --all-features -- \
+            -D warnings -D clippy::unwrap_used -D clippy::expect_used \
+            -D clippy::todo -D clippy::unimplemented \
+            -D clippy::undocumented_unsafe_blocks
+      - name: Test Rust CLI
+        run: cargo test --all-features --locked
+      - name: Build Rust CLI
+        run: cargo build --locked
+
   plan:
     needs:
       - verify-release-target
       - security-audit
+      - verify
     runs-on: "ubuntu-22.04"
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
@@ -105,8 +146,7 @@ jobs:
         run: |
           if ! dist --version >/dev/null 2>&1; then
             rm -f "$HOME/.cargo/bin/dist"
-            curl --proto '=https' --tlsv1.2 -LsSf \
-              "https://github.com/axodotdev/cargo-dist/releases/download/v${CARGO_DIST_VERSION}/cargo-dist-installer.sh" | sh
+            cargo install cargo-dist --version "$CARGO_DIST_VERSION" --locked --debug
           fi
       - id: plan
         run: |
@@ -153,8 +193,7 @@ jobs:
         run: |
           if ! dist --version >/dev/null 2>&1; then
             rm -f "$HOME/.cargo/bin/dist"
-            curl --proto '=https' --tlsv1.2 -LsSf \
-              "https://github.com/axodotdev/cargo-dist/releases/download/v${CARGO_DIST_VERSION}/cargo-dist-installer.sh" | sh
+            cargo install cargo-dist --version "$CARGO_DIST_VERSION" --locked --debug
           fi
       - name: Fetch local artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -224,9 +263,16 @@ jobs:
         run: |
           if ! dist --version >/dev/null 2>&1; then
             rm -f "$HOME/.cargo/bin/dist"
-            curl --proto '=https' --tlsv1.2 -LsSf \
-              "https://github.com/axodotdev/cargo-dist/releases/download/v${CARGO_DIST_VERSION}/cargo-dist-installer.sh" | sh
+            cargo install cargo-dist --version "$CARGO_DIST_VERSION" --locked --debug
           fi
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install Node dependencies
+        run: npm ci
+      - name: Build npm package tooling
+        run: npm run build
       - name: Fetch local artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -237,12 +283,14 @@ jobs:
         shell: bash
         run: |
           dist build ${{ needs.plan.outputs.tag-flag }} --output-format=json "--artifacts=global" > dist-manifest.json
+          npm run pack:npm
           echo "dist ran successfully"
 
           {
             echo "paths<<EOF"
-            jq --raw-output ".upload_files[]" dist-manifest.json
-            echo "EOF"
+              jq --raw-output ".upload_files[]" dist-manifest.json
+              find target/distrib -maxdepth 1 -name 'driggsby-*.tgz' -print
+              echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
           cp dist-manifest.json "$BUILD_MANIFEST_NAME"
@@ -284,11 +332,12 @@ jobs:
       - name: Secret-scan generated npm tarballs
         shell: bash
         run: |
-          jq -r '.releases[] | .artifacts[] | select(endswith("-npm-package.tar.gz"))' <<<"$PLAN" \
-            | sort -u \
-            | while IFS= read -r pkg; do
-              node dist/scripts/release/check-npm-publish-surface.js "./npm/${pkg}"
-            done
+          mapfile -t packages < <(find npm -maxdepth 1 -name 'driggsby-*.tgz' -print | sort)
+          if [[ "${#packages[@]}" -ne 1 ]]; then
+            echo "Expected exactly one owned Driggsby npm package, found ${#packages[@]}." >&2
+            exit 1
+          fi
+          node dist/scripts/release/check-npm-publish-surface.js "${packages[0]}"
 
   host:
     needs:
@@ -317,7 +366,7 @@ jobs:
       - name: Cleanup manifests
         run: |
           rm -f artifacts/*dist-manifest.json
-      - name: Create or update GitHub Release
+      - name: Create GitHub Release
         env:
           PRERELEASE_FLAG: ${{ fromJson(needs.plan.outputs.val).announcement_is_prerelease && '--prerelease' || '' }}
           ANNOUNCEMENT_TITLE: ${{ fromJson(needs.plan.outputs.val).announcement_title }}
@@ -333,10 +382,11 @@ jobs:
           fi
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" artifacts/* --clobber
-          else
-            gh release create "$RELEASE_TAG" --target "$RELEASE_COMMIT" "${prerelease_args[@]}" --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt" artifacts/*
+            echo "Release $RELEASE_TAG already exists; refusing to overwrite immutable public artifacts." >&2
+            exit 1
           fi
+
+          gh release create "$RELEASE_TAG" --target "$RELEASE_COMMIT" "${prerelease_args[@]}" --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt" artifacts/*
 
   publish-npm:
     needs:
@@ -371,8 +421,9 @@ jobs:
       - name: Publish npm package
         shell: bash
         run: |
-          jq -r '.releases[] | .artifacts[] | select(endswith("-npm-package.tar.gz"))' <<<"$PLAN" \
-            | sort -u \
-            | while IFS= read -r pkg; do
-              npm publish --access public "./npm/${pkg}"
-            done
+          mapfile -t packages < <(find npm -maxdepth 1 -name 'driggsby-*.tgz' -print | sort)
+          if [[ "${#packages[@]}" -ne 1 ]]; then
+            echo "Expected exactly one owned Driggsby npm package, found ${#packages[@]}." >&2
+            exit 1
+          fi
+          npm publish --access public "${packages[0]}"

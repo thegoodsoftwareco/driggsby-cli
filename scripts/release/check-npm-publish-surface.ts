@@ -20,21 +20,25 @@ type JsonValue =
   | { [key: string]: JsonValue };
 
 type PackageJson = {
-  artifactDownloadUrls?: unknown;
   bin?: unknown;
-  glibcMinimum?: unknown;
+  driggsbyArtifacts?: unknown;
+  engines?: unknown;
   license?: unknown;
   name?: unknown;
   repository?: unknown;
   scripts?: unknown;
-  supportedPlatforms?: unknown;
   version?: unknown;
 };
 
 type PlatformConfig = {
   artifactName?: unknown;
-  bins?: unknown;
-  zipExt?: unknown;
+  binaryPath?: unknown;
+};
+
+type ArtifactConfig = {
+  baseUrl?: unknown;
+  checksums?: unknown;
+  supportedPlatforms?: unknown;
 };
 
 const expectedPackageName = "driggsby";
@@ -46,12 +50,7 @@ const expectedPlatforms = new Set([
 ]);
 const forbiddenNativeExtensions = new Set([".dylib", ".exe", ".so", ".xz", ".zip"]);
 const forbiddenNativeFileNames = new Set(["driggsby"]);
-const requiredJsEntrypoints = [
-  "binary-install.js",
-  "binary.js",
-  "install.js",
-  "run-driggsby.js",
-];
+const requiredJsEntrypoints = ["install.js", "lib/process.js", "run-driggsby.js"];
 
 const thisFilePath = fileURLToPath(import.meta.url);
 const rootDir = findRepoRoot(dirname(thisFilePath));
@@ -97,14 +96,7 @@ try {
 function assertPackageContract(publishDir: string, relativeFiles: string[]): void {
   const packageJson = readPackageJson(join(publishDir, "package.json"));
   const version = assertString(packageJson.version, "package.json version");
-  const artifactDownloadUrls = assertStringArray(
-    packageJson.artifactDownloadUrls,
-    "package.json artifactDownloadUrls",
-  );
-  const supportedPlatforms = assertRecord(
-    packageJson.supportedPlatforms,
-    "package.json supportedPlatforms",
-  );
+  const artifacts = assertArtifactConfig(packageJson.driggsbyArtifacts);
 
   assertEqual(packageJson.name, expectedPackageName, "package.json name");
   assertEqual(packageJson.license, "Apache-2.0", "package.json license");
@@ -117,10 +109,11 @@ function assertPackageContract(publishDir: string, relativeFiles: string[]): voi
   assertMatchingVersion(version);
   assertExpectedBin(packageJson.bin);
   assertExpectedScripts(packageJson.scripts);
-  assertExpectedGlibcMinimum(packageJson.glibcMinimum);
-  assertExpectedArtifactDownloadUrls(artifactDownloadUrls, version);
-  assertExpectedPlatforms(supportedPlatforms);
+  assertExpectedEngines(packageJson.engines);
+  assertExpectedArtifactBaseUrl(artifacts.baseUrl, version);
+  assertExpectedPlatforms(artifacts.supportedPlatforms, artifacts.checksums);
   assertNoEmbeddedNativeArtifacts(relativeFiles);
+  assertChecksumVerificationCode(publishDir);
 }
 
 function findRepoRoot(startDirectory: string): string {
@@ -174,29 +167,36 @@ function assertExpectedScripts(value: unknown): void {
   assertEqual(scripts.postinstall, "node ./install.js", "package.json scripts.postinstall");
 }
 
-function assertExpectedGlibcMinimum(value: unknown): void {
-  const glibcMinimum = assertRecord(value, "package.json glibcMinimum");
-  assertEqual(glibcMinimum.major, 2, "package.json glibcMinimum.major");
-  if (typeof glibcMinimum.series !== "number") {
-    throw new Error("package.json glibcMinimum.series must be a number.");
-  }
+function assertExpectedEngines(value: unknown): void {
+  const engines = assertRecord(value, "package.json engines");
+  assertEqual(engines.node, ">=18", "package.json engines.node");
 }
 
-function assertExpectedArtifactDownloadUrls(urls: string[], version: string): void {
+function assertArtifactConfig(value: unknown): {
+  baseUrl: string;
+  checksums: Record<string, unknown>;
+  supportedPlatforms: Record<string, unknown>;
+} {
+  const artifacts = assertRecord(value, "package.json driggsbyArtifacts");
+  const baseUrl = assertString(artifacts.baseUrl, "package.json driggsbyArtifacts.baseUrl");
+  const checksums = assertRecord(
+    artifacts.checksums,
+    "package.json driggsbyArtifacts.checksums",
+  );
+  const supportedPlatforms = assertRecord(
+    artifacts.supportedPlatforms,
+    "package.json driggsbyArtifacts.supportedPlatforms",
+  );
+
+  return { baseUrl, checksums, supportedPlatforms };
+}
+
+function assertExpectedArtifactBaseUrl(baseUrl: string, version: string): void {
   const expectedUrl = `https://github.com/${expectedRepository}/releases/download/driggsby-v${version}`;
 
-  if (urls.length !== 1) {
-    throw new Error(`Expected exactly one artifactDownloadUrls entry, got ${urls.length}.`);
-  }
+  assertEqual(baseUrl, expectedUrl, "package.json driggsbyArtifacts.baseUrl");
 
-  const primaryUrl = urls[0];
-  if (primaryUrl === undefined) {
-    throw new Error("package.json artifactDownloadUrls[0] is missing.");
-  }
-
-  assertEqual(primaryUrl, expectedUrl, "package.json artifactDownloadUrls[0]");
-
-  const parsedUrl = new URL(primaryUrl);
+  const parsedUrl = new URL(baseUrl);
   assertEqual(parsedUrl.protocol, "https:", "artifact URL protocol");
   assertEqual(parsedUrl.hostname, "github.com", "artifact URL host");
   if (parsedUrl.pathname.includes("/thegoodsoftwareco/driggsby/releases/")) {
@@ -204,7 +204,10 @@ function assertExpectedArtifactDownloadUrls(urls: string[], version: string): vo
   }
 }
 
-function assertExpectedPlatforms(platforms: Record<string, unknown>): void {
+function assertExpectedPlatforms(
+  platforms: Record<string, unknown>,
+  checksums: Record<string, unknown>,
+): void {
   const actualPlatforms = new Set(Object.keys(platforms));
 
   for (const expectedPlatform of expectedPlatforms) {
@@ -220,16 +223,28 @@ function assertExpectedPlatforms(platforms: Record<string, unknown>): void {
 
     const platform = assertRecord(platforms[actualPlatform], `platform ${actualPlatform}`);
     assertPlatformConfig(actualPlatform, platform);
+    assertArtifactChecksum(actualPlatform, platform, checksums);
   }
 }
 
 function assertPlatformConfig(platformName: string, platform: PlatformConfig): void {
   const artifactName = assertString(platform.artifactName, `${platformName}.artifactName`);
-  const bins = assertRecord(platform.bins, `${platformName}.bins`);
 
   assertEqual(artifactName, `driggsby-${platformName}.tar.xz`, `${platformName}.artifactName`);
-  assertEqual(platform.zipExt, ".tar.xz", `${platformName}.zipExt`);
-  assertEqual(bins.driggsby, "driggsby", `${platformName}.bins.driggsby`);
+  assertEqual(platform.binaryPath, "driggsby", `${platformName}.binaryPath`);
+}
+
+function assertArtifactChecksum(
+  platformName: string,
+  platform: PlatformConfig,
+  checksums: Record<string, unknown>,
+): void {
+  const artifactName = assertString(platform.artifactName, `${platformName}.artifactName`);
+  const checksum = checksums[artifactName];
+
+  if (typeof checksum !== "string" || !/^[0-9a-f]{64}$/i.test(checksum)) {
+    throw new Error(`Missing valid embedded SHA-256 checksum for ${artifactName}.`);
+  }
 }
 
 function assertNoEmbeddedNativeArtifacts(relativeFiles: string[]): void {
@@ -248,6 +263,18 @@ function assertGeneratedJavaScriptParses(publishDir: string): void {
     const path = join(publishDir, relativePath);
     assertFileExists(path, `Missing generated JS entrypoint ${relativePath}.`);
     execFileSync("node", ["--check", path], { stdio: "inherit" });
+  }
+}
+
+function assertChecksumVerificationCode(publishDir: string): void {
+  const installJs = readFileSync(join(publishDir, "install.js"), "utf8");
+
+  if (
+    !installJs.includes("createHash") ||
+    !installJs.includes("driggsbyArtifacts.checksums") ||
+    !installJs.includes("verifyChecksum")
+  ) {
+    throw new Error("install.js does not verify artifact SHA-256 before extraction.");
   }
 }
 
@@ -325,14 +352,6 @@ function assertDirectoryExists(path: string, message: string): void {
 function assertString(value: unknown, label: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`${label} must be a non-empty string.`);
-  }
-
-  return value;
-}
-
-function assertStringArray(value: unknown, label: string): string[] {
-  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
-    throw new Error(`${label} must be an array of strings.`);
   }
 
   return value;

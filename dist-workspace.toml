@@ -4,8 +4,8 @@ members = ["cargo:."]
 [dist]
 cargo-dist-version = "0.31.0"
 ci = "github"
-installers = ["npm"]
-publish-jobs = ["npm"]
+installers = []
+publish-jobs = []
 precise-builds = true
 allow-dirty = ["ci"]
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]

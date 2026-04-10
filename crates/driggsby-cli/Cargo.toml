@@ -15,7 +15,6 @@ path = "src/main.rs"
 
 [package.metadata.dist]
 dist = true
-npm-package = "driggsby"
 
 [dependencies]
 anyhow.workspace = true

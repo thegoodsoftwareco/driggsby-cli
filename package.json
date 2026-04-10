@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
+    "pack:npm": "node dist/scripts/release/pack-npm-package.js",
     "check:npm-package": "node dist/scripts/release/check-npm-publish-surface.js"
   },
   "devDependencies": {

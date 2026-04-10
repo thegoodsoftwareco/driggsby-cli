@@ -18,7 +18,9 @@ on:
       - "package-lock.json"
       - "package.json"
       - "scripts/release/check-npm-publish-surface.ts"
+      - "scripts/release/pack-npm-package.ts"
       - "scripts/release/npm-publish-surface.secretlintrc.json"
+      - "npm/driggsby/**"
       - "tsconfig.json"
 
 permissions:
@@ -104,8 +106,7 @@ jobs:
         shell: bash
         run: |
           if ! command -v dist >/dev/null 2>&1; then
-            curl --proto '=https' --tlsv1.2 -LsSf \
-              "https://github.com/axodotdev/cargo-dist/releases/download/v${CARGO_DIST_VERSION}/cargo-dist-installer.sh" | sh
+            cargo install cargo-dist --version "$CARGO_DIST_VERSION" --locked --debug
           fi
 
       - name: Install Node dependencies
@@ -139,21 +140,30 @@ jobs:
           if (release.app_version !== expectedTag.replace("driggsby-v", "")) {
             throw new Error(`unexpected release version ${release.app_version}`);
           }
-          if (!release.artifacts?.includes("driggsby-npm-package.tar.gz")) {
-            throw new Error("dist plan did not include driggsby-npm-package.tar.gz");
+          const manifestText = JSON.stringify(manifest);
+          if (manifestText.includes("driggsby-npm-package.tar.gz")) {
+            throw new Error("dist plan should not include cargo-dist's generated npm package");
           }
           if (JSON.stringify(manifest).includes("driggsby/v")) {
             throw new Error("dist plan still contains slash-style driggsby/v release path");
           }
           NODE
 
-      - name: Build and scan generated npm package
+      - name: Pack and scan owned npm package
         shell: bash
         run: |
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
           dist build --tag="driggsby-v${version}" --artifacts=global --output-format=json > global-dist-manifest.json
-          node dist/scripts/release/check-npm-publish-surface.js target/distrib/driggsby-npm-package.tar.gz
-          tar -xOf target/distrib/driggsby-npm-package.tar.gz package/package.json > generated-package.json
+          mkdir -p target/distrib
+          for artifact in \
+            driggsby-aarch64-apple-darwin.tar.xz \
+            driggsby-x86_64-apple-darwin.tar.xz \
+            driggsby-x86_64-unknown-linux-gnu.tar.xz; do
+            printf '%064d  %s\n' 1 "$artifact" > "target/distrib/${artifact}.sha256"
+          done
+          npm run pack:npm
+          node dist/scripts/release/check-npm-publish-surface.js "target/distrib/driggsby-${version}.tgz"
+          tar -xOf "target/distrib/driggsby-${version}.tgz" package/package.json > generated-package.json
           node - "$version" <<'NODE'
           const fs = require("node:fs");
 
@@ -167,7 +177,7 @@ jobs:
           if (pkg.version !== version) {
             throw new Error(`expected npm package version ${version}, got ${pkg.version}`);
           }
-          if (pkg.artifactDownloadUrls?.[0] !== expectedUrl) {
-            throw new Error(`expected artifact URL ${expectedUrl}, got ${pkg.artifactDownloadUrls?.[0]}`);
+          if (pkg.driggsbyArtifacts?.baseUrl !== expectedUrl) {
+            throw new Error(`expected artifact URL ${expectedUrl}, got ${pkg.driggsbyArtifacts?.baseUrl}`);
           }
           NODE
