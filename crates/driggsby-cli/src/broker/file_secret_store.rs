@@ -228,3 +228,37 @@ fn set_owner_only_permissions(path: &Path) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+
+    use crate::runtime_paths::RuntimePaths;
+
+    use super::{FileSecretStore, SecretStore};
+
+    #[test]
+    fn file_secret_store_round_trips_without_platform_keyring() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_dir = temp_dir.path().join("config");
+        let state_dir = temp_dir.path().join("state");
+        let runtime_paths = RuntimePaths {
+            metadata_path: config_dir.join("cli-metadata.json"),
+            session_snapshot_path: config_dir.join("cli-session.json"),
+            socket_path: state_dir.join("cli.sock"),
+            lock_path: state_dir.join("cli.lock"),
+            config_dir,
+            state_dir,
+        };
+        let store = FileSecretStore::new(&runtime_paths);
+
+        store.set_secret("account", "secret")?;
+        assert_eq!(store.get_secret("account")?.as_deref(), Some("secret"));
+        assert!(store.has_stored_secrets()?);
+        assert!(store.delete_secret("account")?);
+        assert_eq!(store.get_secret("account")?, None);
+        assert!(!store.has_stored_secrets()?);
+
+        Ok(())
+    }
+}

@@ -80,6 +80,10 @@ mod tests {
     #[serial]
     fn keyring_round_trips_probe_style_account_names() -> Result<()> {
         let store = KeyringSecretStore::default();
+        if !store.is_available() {
+            return Ok(());
+        }
+
         let account = "driggsby-probe-test-account";
         let secret = "probe-secret";
 
@@ -96,6 +100,10 @@ mod tests {
     #[serial]
     fn keyring_round_trips_broker_style_account_names() -> Result<()> {
         let store = KeyringSecretStore::default();
+        if !store.is_available() {
+            return Ok(());
+        }
+
         let account = "driggsby__019d754f-2ca2-73b0-bf51-3c689d49c469__dpop-private-jwk";
         let secret = "{\"kty\":\"EC\"}";
 

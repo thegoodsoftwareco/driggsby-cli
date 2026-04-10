@@ -101,6 +101,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libdbus-1-dev pkg-config
+      - name: Restore Rust verify target cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: target
+          key: rust-verify-target-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/driggsby-cli/Cargo.toml') }}
+          restore-keys: |
+            rust-verify-target-${{ runner.os }}-
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
       - name: Lint Rust libraries and binaries
