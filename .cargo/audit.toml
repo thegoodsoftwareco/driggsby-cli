@@ -1,0 +1,6 @@
+[advisories]
+ignore = [
+  # No upstream fix is currently available. The CLI uses jsonwebtoken for local
+  # OAuth/DPOP client behavior, not attacker-observable RSA decryption.
+  "RUSTSEC-2023-0071",
+]
