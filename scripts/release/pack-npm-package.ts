@@ -9,14 +9,14 @@ import {
 import { join } from "node:path";
 import { spawnFile } from "../../npm/driggsby/lib/process.js";
 
-type NpmPackageJson = {
+interface NpmPackageJson {
   driggsbyArtifacts: {
     baseUrl: string;
     checksums: Record<string, string>;
     supportedPlatforms: Record<string, { artifactName: string }>;
   };
   version: string;
-};
+}
 
 const packageDirectory = "npm/driggsby";
 const outputDirectory = "target/distrib";

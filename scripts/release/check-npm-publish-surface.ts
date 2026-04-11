@@ -20,7 +20,7 @@ type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-type PackageJson = {
+interface PackageJson {
   bin?: unknown;
   driggsbyArtifacts?: unknown;
   engines?: unknown;
@@ -29,18 +29,12 @@ type PackageJson = {
   repository?: unknown;
   scripts?: unknown;
   version?: unknown;
-};
+}
 
-type PlatformConfig = {
+interface PlatformConfig {
   artifactName?: unknown;
   binaryPath?: unknown;
-};
-
-type ArtifactConfig = {
-  baseUrl?: unknown;
-  checksums?: unknown;
-  supportedPlatforms?: unknown;
-};
+}
 
 const expectedPackageName = "driggsby";
 const expectedRepository = "thegoodsoftwareco/driggsby-cli";
@@ -134,7 +128,7 @@ function assertPackageContract(
 function findRepoRoot(startDirectory: string): string {
   let currentDirectory = resolve(startDirectory);
 
-  while (true) {
+  while (currentDirectory !== dirname(currentDirectory)) {
     const candidatePackageJson = join(currentDirectory, "package.json");
     const candidateConfig = join(
       currentDirectory,
@@ -148,12 +142,10 @@ function findRepoRoot(startDirectory: string): string {
     }
 
     const parentDirectory = dirname(currentDirectory);
-    if (parentDirectory === currentDirectory) {
-      throw new Error("Could not find repository root for npm package surface check.");
-    }
-
     currentDirectory = parentDirectory;
   }
+
+  throw new Error("Could not find repository root for npm package surface check.");
 }
 
 function readPackageJson(path: string): PackageJson {

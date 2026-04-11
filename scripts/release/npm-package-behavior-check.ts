@@ -5,7 +5,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:http";
-import { type AddressInfo } from "node:net";
 import { join } from "node:path";
 
 type JsonValue =
@@ -16,16 +15,16 @@ type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-type ArtifactConfig = {
+interface ArtifactConfig {
   checksums: Record<string, unknown>;
   supportedPlatforms: Record<string, unknown>;
-};
+}
 
-type ChecksumBehaviorOptions = {
+interface ChecksumBehaviorOptions {
   artifactConfig: ArtifactConfig;
   packageJsonPath: string;
   publishDir: string;
-};
+}
 
 export async function assertChecksumVerificationBehavior(
   options: ChecksumBehaviorOptions,
@@ -57,13 +56,10 @@ export async function assertChecksumVerificationBehavior(
       throw new Error("package.json must be a JSON object.");
     }
 
-    const supportedPlatformsJson = options.artifactConfig.supportedPlatforms as {
-      [key: string]: JsonValue;
-    };
     modifiedPackageJson.driggsbyArtifacts = {
       baseUrl: `http://127.0.0.1:${port}`,
       checksums: { [artifactName]: "0".repeat(64) },
-      supportedPlatforms: supportedPlatformsJson,
+      supportedPlatforms: toJsonRecord(options.artifactConfig.supportedPlatforms),
     };
     writeFileSync(options.packageJsonPath, `${JSON.stringify(modifiedPackageJson, null, 2)}\n`);
 
@@ -97,7 +93,7 @@ async function listenOnLocalhost(server: ReturnType<typeof createServer>): Promi
     throw new Error("Could not determine local checksum-test server port.");
   }
 
-  return (address as AddressInfo).port;
+  return (address).port;
 }
 
 async function runInstallScript(publishDir: string): Promise<{
@@ -188,4 +184,39 @@ function assertString(value: unknown, label: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toJsonRecord(record: Record<string, unknown>): Record<string, JsonValue> {
+  const rendered: Record<string, JsonValue> = {};
+
+  for (const [key, value] of Object.entries(record)) {
+    if (!isJsonValue(value)) {
+      throw new Error(`${key} must be JSON-serializable.`);
+    }
+
+    rendered[key] = value;
+  }
+
+  return rendered;
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string"
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return Object.values(value).every(isJsonValue);
 }
