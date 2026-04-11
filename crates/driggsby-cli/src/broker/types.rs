@@ -59,6 +59,7 @@ pub struct BrokerStatus {
 pub struct PingResult {
     pub ok: bool,
     pub broker_id: String,
+    pub cli_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

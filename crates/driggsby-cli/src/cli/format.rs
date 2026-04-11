@@ -33,7 +33,7 @@ pub fn format_status_text(status: &BrokerStatus) -> String {
             lines.push(String::new());
         }
         lines.push("Configure your MCP client with:".to_string());
-        lines.push(format!("  `{command}`"));
+        lines.push(format!("  {command}"));
         has_body = true;
     }
 
@@ -211,7 +211,7 @@ mod tests {
         assert!(text.contains("Session: connected"));
         assert!(text.contains("Local MCP server: waiting for client launch"));
         assert!(
-            text.contains("Configure your MCP client with:\n  `npx -y driggsby@latest mcp-server`")
+            text.contains("Configure your MCP client with:\n  npx -y driggsby@latest mcp-server")
         );
         assert!(!text.contains("Driggsby CLI"));
         assert!(!text.contains("Access token expires"));
@@ -236,6 +236,7 @@ mod tests {
         assert!(text.starts_with("Not connected\n"));
         assert!(text.contains("Sign in is required before this CLI can serve MCP requests."));
         assert!(text.contains("Next:\n  npx driggsby@latest login"));
+        assert!(!text.contains('`'));
         assert!(!text.contains("Session:"));
         assert!(!text.contains("Local MCP server:"));
     }

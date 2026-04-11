@@ -15,10 +15,11 @@ use tokio::time::{Duration, sleep};
 use crate::runtime_paths::{RuntimePaths, ensure_runtime_directories};
 
 use super::{
-    client::call_broker_tool,
+    client::{call_broker_tool, ping_broker},
     installation::{
         ensure_broker_installation, read_broker_dpop_key_pair, read_broker_local_auth_token,
     },
+    public_error::PublicBrokerError,
     remote_mcp::RemoteMcpClient,
     secret_store::SecretStore,
     server::LocalBrokerServer,
@@ -129,6 +130,10 @@ async fn local_broker_handles_parallel_forwarded_calls() -> Result<()> {
     });
 
     sleep(Duration::from_millis(100)).await;
+    let Some(ping) = ping_broker(&runtime_paths, secret_store.as_ref()).await? else {
+        panic!("missing broker ping");
+    };
+    assert_eq!(ping.cli_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
 
     let mut tasks = tokio::task::JoinSet::new();
     for index in 0..20 {
@@ -157,12 +162,25 @@ async fn local_broker_handles_parallel_forwarded_calls() -> Result<()> {
         results.push(value);
     }
 
-    broker_task.abort();
-
     assert_eq!(results.len(), 20);
     assert_eq!(remote_state.initialize_count.load(Ordering::SeqCst), 1);
     assert_eq!(remote_state.list_tools_count.load(Ordering::SeqCst), 1);
     assert_eq!(remote_state.call_tool_count.load(Ordering::SeqCst), 20);
+
+    let validation_error = call_broker_tool(
+        &runtime_paths,
+        secret_store.as_ref(),
+        "fail_validation",
+        Some(json!({ "start_date": "not-a-date" })),
+    )
+    .await;
+    let Err(error) = validation_error else {
+        panic!("expected validation error");
+    };
+    assert!(error.downcast_ref::<PublicBrokerError>().is_some());
+    assert!(error.to_string().contains("invalid input"));
+
+    broker_task.abort();
     Ok(())
 }
 
@@ -237,6 +255,17 @@ async fn fake_remote_handler(
                                     "required": ["amount"],
                                     "additionalProperties": false
                                 }
+                            },
+                            {
+                                "name": "fail_validation",
+                                "description": "Return a validation error.",
+                                "inputSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "start_date": { "type": "string" }
+                                    },
+                                    "additionalProperties": false
+                                }
                             }
                         ]
                     }
@@ -252,6 +281,23 @@ async fn fake_remote_handler(
             );
             state.call_tool_count.fetch_add(1, Ordering::SeqCst);
             sleep(Duration::from_millis(50)).await;
+            let tool_name = body
+                .get("params")
+                .and_then(|params| params.get("name"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if tool_name == "fail_validation" {
+                return (
+                    axum::http::HeaderMap::new(),
+                    Json(json!({
+                        "jsonrpc": "2.0",
+                        "id": body.get("id").cloned().unwrap_or(Value::Null),
+                        "error": {
+                            "message": "invalid input: start_date must use YYYY-MM-DD"
+                        }
+                    })),
+                );
+            }
             let amount = body
                 .get("params")
                 .and_then(|params| params.get("arguments"))

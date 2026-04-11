@@ -6,7 +6,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 rust-version = "1.94"
-version = "0.1.16"
+version = "0.1.17"
 repository = "https://github.com/thegoodsoftwareco/driggsby-cli"
 license = "Apache-2.0"
 
@@ -22,6 +22,7 @@ anyhow = "1.0.102"
 axum = "0.8.6"
 base64 = "0.22.1"
 clap = { version = "4.6.0", features = ["derive", "wrap_help"] }
+fs2 = "0.4.3"
 jsonwebtoken = { version = "10.3.0", default-features = false, features = ["rust_crypto", "use_pem"] }
 keyring = { version = "3.6.2", features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
 open = "5.3.3"

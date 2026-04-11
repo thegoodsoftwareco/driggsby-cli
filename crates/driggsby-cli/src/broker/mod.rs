@@ -4,6 +4,7 @@ pub mod file_secret_store;
 pub mod installation;
 pub mod keyring_secret_store;
 pub mod launch;
+pub mod public_error;
 pub mod remote_mcp;
 pub mod remote_session;
 pub mod resolve_secret_store;

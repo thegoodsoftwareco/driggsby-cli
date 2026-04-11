@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::{
     auth::{
@@ -13,6 +13,7 @@ use crate::{
 
 use super::{
     installation::read_broker_dpop_key_pair,
+    public_error::PublicBrokerError,
     secret_store::SecretStore,
     session::{
         BrokerRemoteSession, BrokerRemoteSessionSummary, read_broker_remote_session,
@@ -54,23 +55,26 @@ pub async fn ensure_fresh_remote_session(
     broker_id: &str,
 ) -> Result<BrokerRemoteSession> {
     let Some(session) = read_broker_remote_session(secret_store, broker_id)? else {
-        bail!(build_reauthentication_required_message(
-            "The Driggsby CLI is not connected"
-        ));
+        return Err(
+            PublicBrokerError::new(build_reauthentication_required_message(
+                "The Driggsby CLI is not connected",
+            ))
+            .into(),
+        );
     };
     if !session_needs_refresh(&session) {
         return Ok(session);
     }
 
     let metadata = fetch_authorization_server_metadata(&session.issuer).await.map_err(|_| {
-        anyhow::anyhow!(
+        PublicBrokerError::new(
             "Driggsby could not refresh the local CLI session right now because it could not reach the authorization server. Wait a moment and try again."
         )
     })?;
     let dpop_key_pair = read_broker_dpop_key_pair(runtime_paths, secret_store, broker_id)?
         .ok_or_else(|| {
-            anyhow::anyhow!(build_reauthentication_required_message(
-                "The local CLI key is missing"
+            PublicBrokerError::new(build_reauthentication_required_message(
+                "The local CLI key is missing",
             ))
         })?;
     let dpop_proof = create_dpop_proof(

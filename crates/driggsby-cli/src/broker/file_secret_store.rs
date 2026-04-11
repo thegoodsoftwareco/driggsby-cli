@@ -18,8 +18,8 @@ use crate::{
 use super::secret_store::SecretStore;
 
 const FILE_SECRET_KEY_BYTES: usize = 32;
-const FILE_SECRET_STORE_INCOMPLETE_MESSAGE: &str = "The local Driggsby file-backed secret store is incomplete. Run `npx driggsby@latest logout` and then `npx driggsby@latest login`.";
-const FILE_SECRET_STORE_INVALID_MESSAGE: &str = "The local Driggsby file-backed secret store is invalid. Run `npx driggsby@latest logout` and then `npx driggsby@latest login`.";
+const FILE_SECRET_STORE_INCOMPLETE_MESSAGE: &str = "The local Driggsby file-backed secret store is incomplete. Run npx driggsby@latest logout and then npx driggsby@latest login.";
+const FILE_SECRET_STORE_INVALID_MESSAGE: &str = "The local Driggsby file-backed secret store is invalid. Run npx driggsby@latest logout and then npx driggsby@latest login.";
 const FILE_SECRET_STORE_SCHEMA_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
