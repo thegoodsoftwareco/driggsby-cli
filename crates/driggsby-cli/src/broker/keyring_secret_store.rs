@@ -30,7 +30,7 @@ impl KeyringSecretStore {
 
         #[cfg(target_os = "linux")]
         {
-            return KeyringAvailability::Available;
+            KeyringAvailability::Available
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -46,7 +46,7 @@ impl KeyringSecretStore {
     pub fn is_preferred_for_fresh_install(&self) -> bool {
         #[cfg(target_os = "linux")]
         {
-            return linux_graphical_session_is_configured(|key| std::env::var_os(key));
+            linux_graphical_session_is_configured(|key| std::env::var_os(key))
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -80,7 +80,7 @@ impl KeyringSecretStore {
 fn keyring_session_is_configured() -> bool {
     #[cfg(target_os = "linux")]
     {
-        return linux_secret_service_session_is_configured(|key| std::env::var_os(key));
+        linux_secret_service_session_is_configured(|key| std::env::var_os(key))
     }
 
     #[cfg(not(target_os = "linux"))]
