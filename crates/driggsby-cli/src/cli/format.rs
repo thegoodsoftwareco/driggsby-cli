@@ -85,7 +85,7 @@ fn resolve_details(
 
     if status.installed {
         lines.push(format!(
-            "Local MCP server: {}",
+            "Local auth broker: {}",
             match remote_access_state {
                 BrokerRemoteAccessState::Ready if status.broker_running => "running",
                 BrokerRemoteAccessState::Ready => "waiting for client launch",
@@ -209,7 +209,7 @@ mod tests {
 
         assert!(text.starts_with("Ready\n"));
         assert!(text.contains("Session: connected"));
-        assert!(text.contains("Local MCP server: waiting for client launch"));
+        assert!(text.contains("Local auth broker: waiting for client launch"));
         assert!(
             text.contains("Configure your MCP client with:\n  npx -y driggsby@latest mcp-server")
         );
@@ -238,7 +238,7 @@ mod tests {
         assert!(text.contains("Next:\n  npx driggsby@latest login"));
         assert!(!text.contains('`'));
         assert!(!text.contains("Session:"));
-        assert!(!text.contains("Local MCP server:"));
+        assert!(!text.contains("Local auth broker:"));
     }
 
     #[test]
@@ -256,7 +256,7 @@ mod tests {
             socket_path: "/tmp/cli.sock".to_string(),
         });
 
-        assert!(text.contains("Local MCP server: running"));
+        assert!(text.contains("Local auth broker: running"));
         assert!(text.contains("This CLI is ready to serve MCP requests."));
         assert!(!text.contains("Next:"));
     }

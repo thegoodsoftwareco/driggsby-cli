@@ -41,6 +41,7 @@ pub struct BrokerLoginResult {
 pub async fn login_broker(
     runtime_paths: &RuntimePaths,
     secret_store: &dyn SecretStore,
+    on_manual_sign_in_url: impl FnOnce(&str) -> Result<()>,
 ) -> Result<BrokerLoginResult> {
     let config = resolve_broker_auth_config()?;
     let metadata = ensure_broker_installation(runtime_paths, secret_store).await?;
@@ -71,6 +72,9 @@ pub async fn login_broker(
         &state,
     )?;
     let browser_opened = open_browser_url(&sign_in_url).await?;
+    if !browser_opened {
+        on_manual_sign_in_url(&sign_in_url)?;
+    }
     let callback = listener.wait_for_result().await?;
     listener.close().await?;
 

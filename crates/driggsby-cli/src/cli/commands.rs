@@ -1,3 +1,5 @@
+use std::io::{self, Write as _};
+
 use anyhow::Result;
 
 use crate::{
@@ -15,24 +17,38 @@ use crate::{
 
 pub async fn run_login_command(runtime_paths: &RuntimePaths) -> Result<()> {
     ensure_runtime_directories(runtime_paths)?;
+    println!("Preparing Driggsby sign-in...");
+    flush_stdout()?;
+
     let resolved_secret_store = resolve_secret_store(runtime_paths)?;
-    println!("Opening Driggsby sign-in in your browser...");
     if let Some(notice) = &resolved_secret_store.notice {
         println!("{notice}");
     }
 
-    let result = login_broker(runtime_paths, resolved_secret_store.store.as_ref()).await?;
-    if !result.browser_opened {
-        println!("Your browser did not open automatically.");
-        println!("Open this URL to finish connecting Driggsby:");
-        println!("{}", result.sign_in_url);
-        println!();
-    }
+    login_broker(
+        runtime_paths,
+        resolved_secret_store.store.as_ref(),
+        print_manual_sign_in_url,
+    )
+    .await?;
 
     println!("Connected successfully.");
     println!();
     println!("Configure your MCP client with:");
     println!("  {DRIGGSBY_MCP_SERVER_COMMAND}");
+    Ok(())
+}
+
+fn print_manual_sign_in_url(sign_in_url: &str) -> Result<()> {
+    println!("Your browser did not open automatically.");
+    println!("Open this URL to finish connecting Driggsby:");
+    println!("{sign_in_url}");
+    println!();
+    flush_stdout()
+}
+
+fn flush_stdout() -> Result<()> {
+    io::stdout().flush()?;
     Ok(())
 }
 
