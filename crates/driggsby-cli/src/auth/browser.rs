@@ -11,7 +11,7 @@ pub async fn open_browser_url(url: &str) -> Result<bool> {
 fn browser_opening_is_plausible() -> bool {
     #[cfg(target_os = "linux")]
     {
-        return linux_browser_session_is_configured(|key| std::env::var_os(key));
+        linux_browser_session_is_configured(|key| std::env::var_os(key))
     }
 
     #[cfg(not(target_os = "linux"))]
