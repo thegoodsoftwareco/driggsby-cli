@@ -20,6 +20,7 @@ on:
       - "dist-workspace.toml"
       - "**/Cargo.toml"
       - "scripts/check_github_action_pins.sh"
+      - "scripts/release/install-cargo-dist.sh"
       - "package-lock.json"
       - "package.json"
       - "scripts/release/check-npm-publish-surface.ts"
@@ -132,15 +133,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Restore dist caches
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: |
-            ~/.cargo/bin
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: pr-security-release-surface-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'dist-workspace.toml', '.github/workflows/pr-security.yml', '.github/workflows/release.yml') }}
-
       - name: Set up Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
@@ -167,10 +159,7 @@ jobs:
 
       - name: Install cargo-dist
         shell: bash
-        run: |
-          if ! command -v dist >/dev/null 2>&1; then
-            cargo install cargo-dist --version "$CARGO_DIST_VERSION" --locked --debug
-          fi
+        run: bash scripts/release/install-cargo-dist.sh
 
       - name: Install Node dependencies
         run: npm ci
