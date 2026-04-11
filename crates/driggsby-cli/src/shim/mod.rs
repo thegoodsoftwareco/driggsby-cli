@@ -12,6 +12,7 @@ use rmcp::{
 };
 
 use crate::{
+    broker::public_error::PublicBrokerError,
     broker::{
         client::{call_broker_tool, list_broker_tools},
         launch::ensure_broker_running,
@@ -152,5 +153,17 @@ fn local_status_tool() -> Result<Tool> {
 }
 
 fn to_mcp_error(error: anyhow::Error) -> ErrorData {
-    ErrorData::new(ErrorCode::INTERNAL_ERROR, error.to_string(), None)
+    if let Some(public_error) = error.downcast_ref::<PublicBrokerError>() {
+        return ErrorData::new(
+            ErrorCode::INTERNAL_ERROR,
+            public_error.message().to_string(),
+            None,
+        );
+    }
+
+    ErrorData::new(
+        ErrorCode::INTERNAL_ERROR,
+        "Driggsby could not complete that request. Check the input and try again.\n\nNext:\n  npx driggsby@latest status",
+        None,
+    )
 }

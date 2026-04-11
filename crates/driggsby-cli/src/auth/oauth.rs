@@ -162,7 +162,7 @@ pub async fn refresh_access_token(
                 .any(|needle| body.contains(needle)))
         {
             bail!(
-                "Authentication has expired or the saved CLI session is no longer valid. Reconnect Driggsby by running `npx driggsby@latest login`."
+                "Authentication has expired or the saved CLI session is no longer valid. Reconnect Driggsby by running npx driggsby@latest login."
             );
         }
         bail!(

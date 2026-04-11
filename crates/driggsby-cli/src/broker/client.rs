@@ -15,18 +15,28 @@ use crate::runtime_paths::RuntimePaths;
 
 use super::{
     installation::{read_broker_local_auth_token, read_broker_metadata},
+    public_error::PublicBrokerError,
     secret_store::SecretStore,
-    types::{BrokerRequest, BrokerResponse, BrokerStatus},
+    types::{BrokerRequest, BrokerResponse, BrokerStatus, PingResult},
 };
 
-const BROKER_TIMEOUT: Duration = Duration::from_secs(15);
+const BROKER_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const BROKER_CONTROL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
+const BROKER_STATUS_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+const BROKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(120);
+const BROKER_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const LOCAL_SERVER_DETECTION_TIMEOUT: Duration = Duration::from_millis(250);
 
 pub async fn ping_broker(
     runtime_paths: &RuntimePaths,
     secret_store: &dyn SecretStore,
-) -> Result<Option<Value>> {
-    send_broker_request(runtime_paths, secret_store, "ping", None, None).await
+) -> Result<Option<PingResult>> {
+    let Some(response) =
+        send_broker_request(runtime_paths, secret_store, "ping", None, None).await?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(serde_json::from_value(response)?))
 }
 
 pub async fn get_broker_status(
@@ -126,7 +136,7 @@ async fn send_broker_request(
     };
 
     let stream = match timeout(
-        BROKER_TIMEOUT,
+        BROKER_CONNECT_TIMEOUT,
         UnixStream::connect(&runtime_paths.socket_path),
     )
     .await
@@ -135,27 +145,40 @@ async fn send_broker_request(
         Ok(Err(_)) | Err(_) => return Ok(None),
     };
     let (reader, mut writer) = stream.into_split();
-    timeout(
-        BROKER_TIMEOUT,
+    match timeout(
+        BROKER_WRITE_TIMEOUT,
         writer.write_all(format!("{}\n", serde_json::to_string(&request)?).as_bytes()),
     )
     .await
-    .ok();
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(_)) | Err(_) => return Ok(None),
+    }
     let mut line = String::new();
     let mut reader = BufReader::new(reader);
-    match timeout(BROKER_TIMEOUT, reader.read_line(&mut line)).await {
+    match timeout(broker_response_timeout(method), reader.read_line(&mut line)).await {
         Ok(Ok(0)) | Ok(Err(_)) | Err(_) => return Ok(None),
         Ok(Ok(_)) => {}
     }
     let response: BrokerResponse = serde_json::from_str(line.trim_end())?;
     if !response.ok {
-        return Err(anyhow::anyhow!(
+        return Err(PublicBrokerError::new(
             response
                 .error
-                .unwrap_or_else(|| "CLI request failed.".to_string())
-        ));
+                .unwrap_or_else(|| "Driggsby could not complete that request.".to_string()),
+        )
+        .into());
     }
     Ok(response.result)
+}
+
+fn broker_response_timeout(method: &str) -> Duration {
+    match method {
+        "ping" | "shutdown" => BROKER_CONTROL_RESPONSE_TIMEOUT,
+        "get_status" => BROKER_STATUS_RESPONSE_TIMEOUT,
+        "list_tools" | "call_tool" => BROKER_RESPONSE_TIMEOUT,
+        _ => BROKER_CONTROL_RESPONSE_TIMEOUT,
+    }
 }
 
 fn socket_appears_available(runtime_paths: &RuntimePaths) -> bool {

@@ -21,6 +21,7 @@ anyhow.workspace = true
 axum.workspace = true
 base64.workspace = true
 clap.workspace = true
+fs2.workspace = true
 jsonwebtoken.workspace = true
 keyring.workspace = true
 open.workspace = true

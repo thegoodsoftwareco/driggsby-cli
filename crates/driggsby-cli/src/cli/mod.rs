@@ -18,7 +18,7 @@ Examples:
     arg_required_else_help = true,
     disable_help_subcommand = true,
     about = "Local Driggsby CLI for connecting AI clients to Driggsby over MCP.",
-    long_about = "Local Driggsby CLI for connecting AI clients to Driggsby over MCP.\n\nThe normal flow is:\n  1. Run `npx driggsby@latest login` once to connect the CLI.\n  2. Point your MCP client at `npx -y driggsby@latest mcp-server`.\n  3. Use `npx driggsby@latest status` any time to confirm readiness.",
+    long_about = "Local Driggsby CLI for connecting AI clients to Driggsby over MCP.\n\nThe normal flow is:\n  1. Run npx driggsby@latest login once to connect the CLI.\n  2. Point your MCP client at npx -y driggsby@latest mcp-server.\n  3. Use npx driggsby@latest status any time to confirm readiness.",
     after_help = EXAMPLES,
 )]
 pub struct Cli {

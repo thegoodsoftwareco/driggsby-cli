@@ -32,7 +32,7 @@ pub async fn run_login_command(runtime_paths: &RuntimePaths) -> Result<()> {
     println!("Connected successfully.");
     println!();
     println!("Configure your MCP client with:");
-    println!("  `{DRIGGSBY_MCP_SERVER_COMMAND}`");
+    println!("  {DRIGGSBY_MCP_SERVER_COMMAND}");
     Ok(())
 }
 

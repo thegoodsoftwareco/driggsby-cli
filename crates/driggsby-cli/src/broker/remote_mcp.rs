@@ -9,8 +9,8 @@ use tokio::sync::{Mutex, Notify, Semaphore};
 
 use crate::auth::dpop::create_dpop_proof;
 
-use super::installation::BrokerDpopKeyPair;
 use super::session::BrokerRemoteSession;
+use super::{installation::BrokerDpopKeyPair, public_error::PublicBrokerError};
 
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
 const MAX_REMOTE_CONCURRENCY: usize = 32;
@@ -91,9 +91,10 @@ impl RemoteMcpClient {
                     .map(|name| name == tool_name)
                     .unwrap_or(false)
             }) {
-                bail!(
-                    "That Driggsby tool is not available in this session anymore. Start a fresh client session and try again."
-                );
+                return Err(PublicBrokerError::new(
+                    "That Driggsby tool is not available in this session anymore. Start a fresh client session and try again.",
+                )
+                .into());
             }
         }
 
@@ -340,9 +341,10 @@ impl RemoteMcpClient {
         if response.status() == reqwest::StatusCode::UNAUTHORIZED
             || response.status() == reqwest::StatusCode::FORBIDDEN
         {
-            bail!(
-                "Authentication has expired or the saved CLI session is no longer valid. Reconnect Driggsby by running `npx driggsby@latest login`."
-            );
+            return Err(PublicBrokerError::new(
+                "Authentication has expired or the saved CLI session is no longer valid. Reconnect Driggsby by running npx driggsby@latest login.",
+            )
+            .into());
         }
         let status = response.status();
         let body = response.text().await?;
@@ -355,7 +357,7 @@ impl RemoteMcpClient {
         }
         let parsed: JsonRpcResponse = serde_json::from_str(&body)?;
         if let Some(error) = parsed.error {
-            bail!(error.message);
+            return Err(PublicBrokerError::new(error.message).into());
         }
         Ok((parsed.result.unwrap_or(Value::Null), new_session_id))
     }

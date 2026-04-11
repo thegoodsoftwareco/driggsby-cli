@@ -11,6 +11,7 @@ use crate::runtime_paths::RuntimePaths;
 
 use super::{
     installation::build_broker_status,
+    public_error::PublicBrokerError,
     remote_mcp::RemoteMcpClient,
     remote_session::ensure_fresh_remote_session,
     secret_store::SecretStore,
@@ -81,7 +82,17 @@ impl LocalBrokerServer {
             return Ok(());
         }
         let request: BrokerRequest = serde_json::from_str(line.trim_end())?;
-        let response = self.dispatch_request(request, dpop_keys).await?;
+        let request_id = request.id.clone();
+        let response = match self.dispatch_request(request, dpop_keys).await {
+            Ok(response) => response,
+            Err(error) => BrokerResponse {
+                broker_proof: String::new(),
+                id: request_id,
+                ok: false,
+                result: None,
+                error: Some(public_broker_error_message(&error)),
+            },
+        };
         writer
             .write_all(format!("{}\n", serde_json::to_string(&response)?).as_bytes())
             .await?;
@@ -106,7 +117,8 @@ impl LocalBrokerServer {
         let result = match request.method.as_str() {
             "ping" => json!({
                 "ok": true,
-                "broker_id": self.broker_id
+                "broker_id": self.broker_id,
+                "cli_version": env!("CARGO_PKG_VERSION")
             }),
             "get_status" => json!({
                 "status": build_broker_status(
@@ -154,4 +166,12 @@ impl LocalBrokerServer {
             error: None,
         })
     }
+}
+
+fn public_broker_error_message(error: &anyhow::Error) -> String {
+    if let Some(public_error) = error.downcast_ref::<PublicBrokerError>() {
+        return public_error.message().to_string();
+    }
+
+    "Driggsby could not complete that request. Check the input and try again.\n\nNext:\n  npx driggsby@latest status".to_string()
 }
