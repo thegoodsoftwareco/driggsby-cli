@@ -4,6 +4,7 @@ use anyhow::{Result, bail};
 use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::sync::{Mutex, Notify, Semaphore};
 
 use crate::auth::dpop::create_dpop_proof;
@@ -19,15 +20,17 @@ pub struct RemoteMcpClient {
     http_client: reqwest::Client,
     state: Arc<Mutex<RemoteSessionState>>,
     initialize_lock: Arc<Mutex<()>>,
-    tools_cache: Arc<Mutex<Option<Vec<Value>>>>,
     tools_inflight: Arc<Mutex<Option<Arc<Notify>>>>,
     concurrency_limit: Arc<Semaphore>,
 }
 
 #[derive(Debug, Default)]
 struct RemoteSessionState {
+    initialized: bool,
     next_request_id: u64,
+    session_key: Option<String>,
     session_id: Option<String>,
+    tools_cache: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,7 +56,6 @@ impl RemoteMcpClient {
                 .build()?,
             state: Arc::new(Mutex::new(RemoteSessionState::default())),
             initialize_lock: Arc::new(Mutex::new(())),
-            tools_cache: Arc::new(Mutex::new(None)),
             tools_inflight: Arc::new(Mutex::new(None)),
             concurrency_limit: Arc::new(Semaphore::new(MAX_REMOTE_CONCURRENCY)),
         })
@@ -126,7 +128,8 @@ impl RemoteMcpClient {
         dpop_keys: &BrokerDpopKeyPair,
         refresh: bool,
     ) -> Result<Vec<Value>> {
-        if !refresh && let Some(cached) = self.tools_cache.lock().await.clone() {
+        let session_key = remote_session_key(session, dpop_keys)?;
+        if !refresh && let Some(cached) = self.cached_tools_for_session(&session_key).await {
             return Ok(cached);
         }
 
@@ -143,7 +146,7 @@ impl RemoteMcpClient {
             };
             if let Some(notify) = waiting_on {
                 notify.notified().await;
-                if let Some(cached) = self.tools_cache.lock().await.clone() {
+                if let Some(cached) = self.cached_tools_for_session(&session_key).await {
                     return Ok(cached);
                 }
                 continue;
@@ -151,7 +154,10 @@ impl RemoteMcpClient {
 
             let result = self.fetch_tools(session, dpop_keys).await;
             if let Ok(tools) = &result {
-                *self.tools_cache.lock().await = Some(tools.clone());
+                let mut state = self.state.lock().await;
+                if state.session_key.as_deref() == Some(session_key.as_str()) {
+                    state.tools_cache = Some(tools.clone());
+                }
             }
             let notify = self.tools_inflight.lock().await.take();
             if let Some(notify) = notify {
@@ -159,6 +165,14 @@ impl RemoteMcpClient {
             }
             return result;
         }
+    }
+
+    async fn cached_tools_for_session(&self, session_key: &str) -> Option<Vec<Value>> {
+        let state = self.state.lock().await;
+        if state.session_key.as_deref() != Some(session_key) {
+            return None;
+        }
+        state.tools_cache.clone()
     }
 
     async fn fetch_tools(
@@ -190,16 +204,21 @@ impl RemoteMcpClient {
         dpop_keys: &BrokerDpopKeyPair,
         payload: Value,
     ) -> Result<Value> {
-        self.ensure_initialized(session, dpop_keys).await?;
+        let session_key = remote_session_key(session, dpop_keys)?;
+        let session_id = self.ensure_initialized(session, dpop_keys).await?;
         match self
-            .post_json(session, dpop_keys, payload.clone(), true)
+            .post_json_internal(session, dpop_keys, payload.clone(), session_id.clone())
             .await
         {
-            Ok(result) => Ok(result),
+            Ok((result, _)) => Ok(result),
             Err(error) if error.to_string().contains("session expired") => {
-                self.clear_session().await;
-                self.ensure_initialized(session, dpop_keys).await?;
-                self.post_json(session, dpop_keys, payload, true).await
+                self.clear_session_if_current(&session_key, session_id.as_deref())
+                    .await;
+                let session_id = self.ensure_initialized(session, dpop_keys).await?;
+                let (result, _) = self
+                    .post_json_internal(session, dpop_keys, payload, session_id)
+                    .await?;
+                Ok(result)
             }
             Err(error) => Err(error),
         }
@@ -209,15 +228,27 @@ impl RemoteMcpClient {
         &self,
         session: &BrokerRemoteSession,
         dpop_keys: &BrokerDpopKeyPair,
-    ) -> Result<()> {
-        if self.state.lock().await.session_id.is_some() {
-            return Ok(());
+    ) -> Result<Option<String>> {
+        let session_key = remote_session_key(session, dpop_keys)?;
+        {
+            let state = self.state.lock().await;
+            if state.initialized && state.session_key.as_deref() == Some(session_key.as_str()) {
+                return Ok(state.session_id.clone());
+            }
         }
 
         let _guard = self.initialize_lock.lock().await;
-        if self.state.lock().await.session_id.is_some() {
-            return Ok(());
-        }
+        {
+            let mut state = self.state.lock().await;
+            if state.session_key.as_deref() != Some(session_key.as_str()) {
+                state.initialized = false;
+                state.session_id = None;
+                state.session_key = Some(session_key.clone());
+                state.tools_cache = None;
+            } else if state.initialized {
+                return Ok(state.session_id.clone());
+            }
+        };
 
         let request_id = self.next_request_id().await;
         let initialize_payload = json!({
@@ -237,41 +268,23 @@ impl RemoteMcpClient {
             .post_json_internal(session, dpop_keys, initialize_payload, None)
             .await?;
         let _ = result;
-        if session_id.is_none() {
-            bail!(
-                "Driggsby could not establish a remote MCP session right now. Try again in a moment."
-            );
-        }
         {
             let mut state = self.state.lock().await;
-            state.session_id = session_id;
+            state.session_key = Some(session_key);
+            state.session_id = session_id.clone();
         }
         let initialized_payload = json!({
             "jsonrpc": "2.0",
             "method": "notifications/initialized"
         });
         let _ = self
-            .post_json(session, dpop_keys, initialized_payload, false)
+            .post_json_internal(session, dpop_keys, initialized_payload, session_id.clone())
             .await?;
-        Ok(())
-    }
-
-    async fn post_json(
-        &self,
-        session: &BrokerRemoteSession,
-        dpop_keys: &BrokerDpopKeyPair,
-        payload: Value,
-        include_session: bool,
-    ) -> Result<Value> {
-        let session_id = if include_session {
-            self.state.lock().await.session_id.clone()
-        } else {
-            None
-        };
-        let (result, _) = self
-            .post_json_internal(session, dpop_keys, payload, session_id)
-            .await?;
-        Ok(result)
+        {
+            let mut state = self.state.lock().await;
+            state.initialized = true;
+        }
+        Ok(session_id)
     }
 
     async fn post_json_internal(
@@ -353,10 +366,49 @@ impl RemoteMcpClient {
         state.next_request_id
     }
 
-    async fn clear_session(&self) {
+    async fn clear_session_if_current(&self, session_key: &str, failed_session_id: Option<&str>) {
         let mut state = self.state.lock().await;
+        if state.session_key.as_deref() != Some(session_key) {
+            return;
+        }
+        if state.session_id.as_deref() != failed_session_id {
+            return;
+        }
+        state.initialized = false;
+        state.session_key = None;
         state.session_id = None;
-        drop(state);
-        *self.tools_cache.lock().await = None;
+        state.tools_cache = None;
     }
+}
+
+fn remote_session_key(
+    session: &BrokerRemoteSession,
+    dpop_keys: &BrokerDpopKeyPair,
+) -> Result<String> {
+    let mut hasher = Sha256::new();
+    for part in [
+        session.schema_version.to_string(),
+        session.issuer.clone(),
+        session.resource.clone(),
+        session.client_id.clone(),
+        session.redirect_uri.clone(),
+        session.scope.clone(),
+        session.token_type.clone(),
+        session.authenticated_at.clone(),
+        session.access_token_expires_at.clone(),
+        session.access_token.clone(),
+        session.refresh_token.clone(),
+    ] {
+        hasher.update(part.as_bytes());
+        hasher.update([0]);
+    }
+    hasher.update(serde_json::to_vec(&dpop_keys.public_jwk)?);
+
+    let digest = hasher.finalize();
+    let mut rendered = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(rendered, "{byte:02x}");
+    }
+    Ok(rendered)
 }
