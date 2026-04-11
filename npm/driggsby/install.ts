@@ -16,18 +16,18 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { readCommandOutput, writeCommandOutputToFile } from "./lib/process.js";
 
-type ArtifactConfig = {
+interface ArtifactConfig {
   artifactName: string;
   binaryPath: string;
-};
+}
 
-type PackageJson = {
+interface PackageJson {
   driggsbyArtifacts: {
     baseUrl: string;
     checksums: Record<string, string>;
     supportedPlatforms: Record<string, ArtifactConfig>;
   };
-};
+}
 
 const packageDirectory = dirname(fileURLToPath(import.meta.url));
 const installDirectory = join(packageDirectory, "node_modules", ".bin_real");
@@ -71,7 +71,7 @@ async function install(): Promise<void> {
     }
 
     await downloadAndVerifyFile(artifactUrl, tempArtifact, expectedChecksum);
-    await extractTarball(tempArtifact, installDirectory, platform.binaryPath);
+    extractTarball(tempArtifact, installDirectory, platform.binaryPath);
     chmodSync(binaryPath, 0o755);
   } catch (error) {
     rmSync(installDirectory, { force: true, recursive: true });

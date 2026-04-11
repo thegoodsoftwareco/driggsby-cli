@@ -5,13 +5,18 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit",
+    "check": "npm run lint && npm run typecheck",
+    "lint": "eslint npm scripts --max-warnings 0",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "pack:npm": "node dist/scripts/release/pack-npm-package.js",
     "check:npm-package": "node dist/scripts/release/check-npm-publish-surface.js"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@types/node": "25.6.0",
-    "typescript": "6.0.2"
+    "eslint": "10.2.0",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.58.1"
   },
   "engines": {
     "node": ">=24"

@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
-export type SpawnResult = {
+export interface SpawnResult {
   status: number;
-};
+}
 
 export function runFile(command: string, args: string[]): SpawnResult {
   const result = spawnSync(command, args, {
