@@ -10,7 +10,10 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertChecksumVerificationBehavior } from "./npm-package-behavior-check.js";
+import {
+  assertChecksumVerificationBehavior,
+  assertUnsupportedPlatformBehavior,
+} from "./npm-package-behavior-check.js";
 
 type JsonValue =
   | boolean
@@ -40,12 +43,18 @@ const expectedPackageName = "driggsby";
 const expectedRepository = "thegoodsoftwareco/driggsby-cli";
 const expectedPlatforms = new Set([
   "aarch64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
   "x86_64-apple-darwin",
   "x86_64-unknown-linux-gnu",
 ]);
 const forbiddenNativeExtensions = new Set([".dylib", ".exe", ".so", ".xz", ".zip"]);
 const forbiddenNativeFileNames = new Set(["driggsby"]);
-const requiredJsEntrypoints = ["install.js", "lib/process.js", "run-driggsby.js"];
+const requiredJsEntrypoints = [
+  "install.js",
+  "lib/artifacts.js",
+  "lib/process.js",
+  "run-driggsby.js",
+];
 
 const thisFilePath = fileURLToPath(import.meta.url);
 const rootDir = findRepoRoot(dirname(thisFilePath));
@@ -87,6 +96,11 @@ async function main(): Promise<void> {
   assertGeneratedJavaScriptParses(publishDir);
   secretScanTextFiles(publishDir, allFiles);
   await assertChecksumVerificationBehavior({
+    artifactConfig: artifacts,
+    packageJsonPath: join(publishDir, "package.json"),
+    publishDir,
+  });
+  await assertUnsupportedPlatformBehavior({
     artifactConfig: artifacts,
     packageJsonPath: join(publishDir, "package.json"),
     publishDir,

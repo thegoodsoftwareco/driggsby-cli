@@ -6,35 +6,22 @@ import {
   lstatSync,
   mkdtempSync,
   mkdirSync,
-  readFileSync,
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { fileURLToPath } from "node:url";
+import {
+  installDirectory,
+  installedBinaryPath,
+  readPackageJson,
+  resolvePlatform,
+  unsupportedPlatformMessage,
+} from "./lib/artifacts.js";
 import { readCommandOutput, writeCommandOutputToFile } from "./lib/process.js";
-
-interface ArtifactConfig {
-  artifactName: string;
-  binaryPath: string;
-}
-
-interface PackageJson {
-  driggsbyArtifacts: {
-    baseUrl: string;
-    checksums: Record<string, string>;
-    supportedPlatforms: Record<string, ArtifactConfig>;
-  };
-}
-
-const packageDirectory = dirname(fileURLToPath(import.meta.url));
-const installDirectory = join(packageDirectory, "node_modules", ".bin_real");
 const maxArtifactBytes = 64 * 1024 * 1024;
-const packageJson = JSON.parse(
-  readFileSync(join(packageDirectory, "package.json"), "utf8"),
-) as PackageJson;
+const packageJson = readPackageJson();
 
 try {
   await install();
@@ -49,8 +36,15 @@ try {
 }
 
 async function install(): Promise<void> {
-  const platform = resolvePlatform();
-  const binaryPath = join(installDirectory, platform.binaryPath);
+  const resolution = resolvePlatform(packageJson);
+  const platform = resolution.platform;
+
+  if (!platform) {
+    console.warn(unsupportedPlatformMessage(resolution));
+    return;
+  }
+
+  const binaryPath = installedBinaryPath(platform.binaryPath);
 
   if (existsSync(binaryPath)) {
     return;
@@ -79,57 +73,6 @@ async function install(): Promise<void> {
   } finally {
     rmSync(tempDirectory, { force: true, recursive: true });
   }
-}
-
-function resolvePlatform(): ArtifactConfig {
-  const triple = targetTriple();
-  const platform = packageJson.driggsbyArtifacts.supportedPlatforms[triple];
-
-  if (!platform) {
-    const supported = Object.keys(packageJson.driggsbyArtifacts.supportedPlatforms)
-      .sort()
-      .join(", ");
-    throw new Error(
-      `Driggsby does not currently publish a native binary for ${process.platform}/${process.arch}. Supported targets: ${supported}.`,
-    );
-  }
-
-  return platform;
-}
-
-function targetTriple(): string {
-  const architecture = mapArchitecture(process.arch);
-  const operatingSystem = mapOperatingSystem(process.platform);
-
-  return `${architecture}-${operatingSystem}`;
-}
-
-function mapArchitecture(architecture: NodeJS.Architecture): string {
-  if (architecture === "arm64") {
-    return "aarch64";
-  }
-
-  if (architecture === "x64") {
-    return "x86_64";
-  }
-
-  return architecture;
-}
-
-function mapOperatingSystem(platform: NodeJS.Platform): string {
-  if (platform === "darwin") {
-    return "apple-darwin";
-  }
-
-  if (platform === "linux") {
-    return "unknown-linux-gnu";
-  }
-
-  if (platform === "win32") {
-    return "pc-windows-msvc";
-  }
-
-  return platform;
 }
 
 async function downloadAndVerifyFile(

@@ -28,6 +28,9 @@ On machines without working platform keyring support, such as some headless
 Linux servers, Driggsby falls back to an owner-only local file-backed secret
 store so the CLI can still complete login and run the broker.
 
+Published npm installs currently include native artifacts for macOS arm64,
+macOS x64, Linux arm64 glibc, and Linux x64 glibc.
+
 ## Quick Start
 
 1. Sign in:

@@ -223,6 +223,7 @@ jobs:
           mkdir -p target/distrib
           for artifact in \
             driggsby-aarch64-apple-darwin.tar.xz \
+            driggsby-aarch64-unknown-linux-gnu.tar.xz \
             driggsby-x86_64-apple-darwin.tar.xz \
             driggsby-x86_64-unknown-linux-gnu.tar.xz; do
             printf '%064d  %s\n' 1 "$artifact" > "target/distrib/${artifact}.sha256"

@@ -37,6 +37,8 @@ driggsby-vX.Y.Z
 The tag-triggered release workflow builds macOS and Linux artifacts with
 `cargo-dist`, uploads them to this public repository's GitHub Release, scans the
 generated npm package, and publishes `driggsby` to npm using trusted publishing.
+Release artifacts currently cover macOS arm64, macOS x64, Linux arm64 glibc,
+and Linux x64 glibc.
 
 ## License
 

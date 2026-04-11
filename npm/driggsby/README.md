@@ -16,6 +16,9 @@ For non-interactive MCP launcher flows, use:
 npx -y driggsby@latest mcp-server
 ```
 
+Supported native artifacts currently cover macOS arm64, macOS x64, Linux arm64
+glibc, and Linux x64 glibc.
+
 ## License
 
 Apache-2.0

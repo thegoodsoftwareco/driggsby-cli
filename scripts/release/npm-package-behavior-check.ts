@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import {
   existsSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:http";
@@ -63,7 +64,7 @@ export async function assertChecksumVerificationBehavior(
     };
     writeFileSync(options.packageJsonPath, `${JSON.stringify(modifiedPackageJson, null, 2)}\n`);
 
-    const result = await runInstallScript(options.publishDir);
+    const result = await runNodeScript(options.publishDir, "install.js", []);
     const output = `${result.stdout}${result.stderr}`;
 
     if (result.status === 0 || !output.includes("checksum mismatch")) {
@@ -76,6 +77,50 @@ export async function assertChecksumVerificationBehavior(
   } finally {
     writeFileSync(options.packageJsonPath, originalPackageJson);
     await closeServer(server);
+  }
+}
+
+export async function assertUnsupportedPlatformBehavior(
+  options: ChecksumBehaviorOptions,
+): Promise<void> {
+  const originalPackageJson = readFileSync(options.packageJsonPath, "utf8");
+
+  try {
+    const modifiedPackageJson = JSON.parse(originalPackageJson) as JsonValue;
+    if (!isRecord(modifiedPackageJson)) {
+      throw new Error("package.json must be a JSON object.");
+    }
+
+    modifiedPackageJson.driggsbyArtifacts = {
+      baseUrl: "https://example.invalid/driggsby",
+      checksums: {},
+      supportedPlatforms: {
+        "unsupported-test-target": {
+          artifactName: "driggsby-unsupported-test-target.tar.xz",
+          binaryPath: "driggsby",
+        },
+      },
+    };
+    writeFileSync(options.packageJsonPath, `${JSON.stringify(modifiedPackageJson, null, 2)}\n`);
+    rmSync(join(options.publishDir, "node_modules"), { force: true, recursive: true });
+
+    const installResult = await runNodeScript(options.publishDir, "install.js", []);
+    const installOutput = `${installResult.stdout}${installResult.stderr}`;
+    if (installResult.status !== 0 || !installOutput.includes("does not currently publish")) {
+      throw new Error("install.js did not complete with a visible unsupported-platform warning.");
+    }
+
+    if (existsSync(join(options.publishDir, "node_modules", ".bin_real", "driggsby"))) {
+      throw new Error("install.js extracted a binary for an unsupported platform.");
+    }
+
+    const runResult = await runNodeScript(options.publishDir, "run-driggsby.js", ["--version"]);
+    const runOutput = `${runResult.stdout}${runResult.stderr}`;
+    if (runResult.status === 0 || !runOutput.includes("does not currently publish")) {
+      throw new Error("run-driggsby.js did not surface the unsupported-platform error.");
+    }
+  } finally {
+    writeFileSync(options.packageJsonPath, originalPackageJson);
   }
 }
 
@@ -96,13 +141,13 @@ async function listenOnLocalhost(server: ReturnType<typeof createServer>): Promi
   return (address).port;
 }
 
-async function runInstallScript(publishDir: string): Promise<{
+async function runNodeScript(publishDir: string, scriptName: string, args: string[]): Promise<{
   status: number | null;
   stderr: string;
   stdout: string;
 }> {
   return await new Promise((resolveRun, rejectRun) => {
-    const child = spawn(process.execPath, ["install.js"], {
+    const child = spawn(process.execPath, [scriptName, ...args], {
       cwd: publishDir,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -110,7 +155,7 @@ async function runInstallScript(publishDir: string): Promise<{
     let stdout = "";
     const timeout = setTimeout(() => {
       child.kill("SIGTERM");
-      rejectRun(new Error("install.js checksum mismatch check timed out."));
+      rejectRun(new Error(`${scriptName} behavior check timed out.`));
     }, 10_000);
 
     child.stdout.setEncoding("utf8");
