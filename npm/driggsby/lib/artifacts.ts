@@ -22,14 +22,11 @@ export interface PlatformResolution {
 }
 
 export const packageDirectory = dirname(dirname(fileURLToPath(import.meta.url)));
-export const installDirectory = join(packageDirectory, "node_modules", ".bin_real");
+export const packageBinDirectory = join(packageDirectory, "bin");
+export const packageBinPath = join(packageBinDirectory, "driggsby");
 
 export function readPackageJson(): PackageJson {
   return JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8")) as PackageJson;
-}
-
-export function installedBinaryPath(binaryPath: string): string {
-  return join(installDirectory, binaryPath);
 }
 
 export function resolvePlatform(packageJson: PackageJson): PlatformResolution {

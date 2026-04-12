@@ -3,4 +3,8 @@ ignore = [
   # No upstream fix is currently available. The CLI uses jsonwebtoken for local
   # OAuth/DPOP client behavior, not attacker-observable RSA decryption.
   "RUSTSEC-2023-0071",
+  # The direct and reqwest-transitive rand lines are patched in Cargo.lock.
+  # The remaining rand 0.8.5 warning is currently transitive through
+  # jsonwebtoken/rsa and keyring/secret-service/zbus with no patched 0.8 line.
+  "RUSTSEC-2026-0097",
 ]

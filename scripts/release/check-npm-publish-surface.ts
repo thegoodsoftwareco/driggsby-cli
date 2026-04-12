@@ -1,17 +1,19 @@
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
-  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assertChecksumVerificationBehavior,
+  assertNativeBinActivationBehavior,
+  assertNpmBinLinkBehavior,
   assertUnsupportedPlatformBehavior,
 } from "./npm-package-behavior-check.js";
 
@@ -47,13 +49,22 @@ const expectedPlatforms = new Set([
   "x86_64-apple-darwin",
   "x86_64-unknown-linux-gnu",
 ]);
-const forbiddenNativeExtensions = new Set([".dylib", ".exe", ".so", ".xz", ".zip"]);
-const forbiddenNativeFileNames = new Set(["driggsby"]);
-const requiredJsEntrypoints = [
+const expectedRelativeFiles = new Set([
+  "LICENSE",
+  "README.md",
+  "bin/driggsby",
   "install.js",
   "lib/artifacts.js",
   "lib/process.js",
-  "run-driggsby.js",
+  "package.json",
+]);
+const forbiddenNativeExtensions = new Set([".dylib", ".exe", ".so", ".xz", ".zip"]);
+const forbiddenNativeFileNames = new Set(["driggsby"]);
+const requiredJsEntrypoints = [
+  "bin/driggsby",
+  "install.js",
+  "lib/artifacts.js",
+  "lib/process.js",
 ];
 
 const thisFilePath = fileURLToPath(import.meta.url);
@@ -82,6 +93,7 @@ try {
 }
 
 async function main(): Promise<void> {
+  assertTarballEntriesAreExpectedRegularFiles(tarballPath);
   execFileSync("tar", ["-xzf", tarballPath, "-C", tempDir], {
     stdio: "inherit",
   });
@@ -105,10 +117,44 @@ async function main(): Promise<void> {
     packageJsonPath: join(publishDir, "package.json"),
     publishDir,
   });
+  await assertNativeBinActivationBehavior({
+    artifactConfig: artifacts,
+    packageJsonPath: join(publishDir, "package.json"),
+    publishDir,
+  });
+  await assertNpmBinLinkBehavior({
+    artifactConfig: artifacts,
+    packageJsonPath: join(publishDir, "package.json"),
+    publishDir,
+  });
 
   process.stdout.write(
     `NPM package surface check passed for ${relative(rootDir, tarballPath)}.\n`,
   );
+}
+
+function assertTarballEntriesAreExpectedRegularFiles(path: string): void {
+  const entries = execFileSync("tar", ["-tzvf", path], { encoding: "utf8" })
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  const seen = new Set<string>();
+
+  for (const entry of entries) {
+    if (!entry.startsWith("-")) {
+      throw new Error(`NPM package tar entry must be a regular file: ${entry}.`);
+    }
+
+    const fields = entry.split(/\s+/);
+    const entryPath = fields[fields.length - 1];
+    if (!entryPath?.startsWith("package/")) {
+      throw new Error(`NPM package tar entry has unexpected path: ${entry}.`);
+    }
+
+    seen.add(entryPath.slice("package/".length));
+  }
+
+  assertExpectedPackageFiles([...seen]);
 }
 
 function assertPackageContract(
@@ -133,7 +179,10 @@ function assertPackageContract(
   assertExpectedEngines(packageJson.engines);
   assertExpectedArtifactBaseUrl(artifacts.baseUrl, version);
   assertExpectedPlatforms(artifacts.supportedPlatforms, artifacts.checksums);
-  assertNoEmbeddedNativeArtifacts(relativeFiles);
+  assertExpectedPackageFiles(relativeFiles);
+  assertPackageFilesAreRegular(publishDir, relativeFiles);
+  assertNoEmbeddedNativeArtifacts(publishDir, relativeFiles);
+  assertExpectedFallbackEntrypoint(publishDir);
   assertChecksumVerificationCode(publishDir);
 
   return artifacts;
@@ -180,7 +229,7 @@ function assertMatchingVersion(version: string): void {
 
 function assertExpectedBin(value: unknown): void {
   const bin = assertRecord(value, "package.json bin");
-  assertEqual(bin.driggsby, "run-driggsby.js", "package.json bin.driggsby");
+  assertEqual(bin.driggsby, "bin/driggsby", "package.json bin.driggsby");
 }
 
 function assertExpectedScripts(value: unknown): void {
@@ -268,15 +317,54 @@ function assertArtifactChecksum(
   }
 }
 
-function assertNoEmbeddedNativeArtifacts(relativeFiles: string[]): void {
+function assertExpectedPackageFiles(relativeFiles: string[]): void {
+  const actualFiles = new Set(relativeFiles);
+
+  for (const expectedFile of expectedRelativeFiles) {
+    if (!actualFiles.has(expectedFile)) {
+      throw new Error(`NPM package is missing expected file ${expectedFile}.`);
+    }
+  }
+
+  for (const actualFile of actualFiles) {
+    if (!expectedRelativeFiles.has(actualFile)) {
+      throw new Error(`NPM package contains unexpected file ${actualFile}.`);
+    }
+  }
+}
+
+function assertPackageFilesAreRegular(publishDir: string, relativeFiles: string[]): void {
+  for (const filePath of relativeFiles) {
+    if (!lstatSync(join(publishDir, filePath)).isFile()) {
+      throw new Error(`NPM package file must be a regular file: ${filePath}.`);
+    }
+  }
+}
+
+function assertNoEmbeddedNativeArtifacts(publishDir: string, relativeFiles: string[]): void {
   for (const filePath of relativeFiles) {
     const name = basename(filePath);
     const extension = extname(filePath);
+
+    if (filePath === "bin/driggsby" && looksTextual(join(publishDir, filePath))) {
+      continue;
+    }
 
     if (forbiddenNativeExtensions.has(extension) || forbiddenNativeFileNames.has(name)) {
       throw new Error(`NPM package must stay thin; found native artifact ${filePath}.`);
     }
   }
+}
+
+function assertExpectedFallbackEntrypoint(publishDir: string): void {
+  const sourcePath = join(rootDir, "dist", "npm", "driggsby", "bin", "driggsby.js");
+  const source = readFileSync(sourcePath, "utf8");
+  const expected = source.startsWith("#!/usr/bin/env node")
+    ? source
+    : `#!/usr/bin/env node\n${source}`;
+  const actual = readFileSync(join(publishDir, "bin", "driggsby"), "utf8");
+
+  assertEqual(actual, expected, "packed bin/driggsby fallback");
 }
 
 function assertGeneratedJavaScriptParses(publishDir: string): void {
@@ -359,13 +447,13 @@ function looksTextual(filePath: string): boolean {
 }
 
 function assertFileExists(path: string, message: string): void {
-  if (!existsSync(path) || !statSync(path).isFile()) {
+  if (!existsSync(path) || !lstatSync(path).isFile()) {
     throw new Error(message);
   }
 }
 
 function assertDirectoryExists(path: string, message: string): void {
-  if (!existsSync(path) || !statSync(path).isDirectory()) {
+  if (!existsSync(path) || !lstatSync(path).isDirectory()) {
     throw new Error(message);
   }
 }

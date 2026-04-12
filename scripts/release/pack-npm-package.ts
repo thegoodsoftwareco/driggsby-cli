@@ -25,13 +25,14 @@ const version = readWorkspaceVersion();
 
 rmSync(stagingDirectory, { force: true, recursive: true });
 mkdirSync(stagingDirectory, { recursive: true });
+mkdirSync(join(stagingDirectory, "bin"), { recursive: true });
 
 copyFileSync("LICENSE", join(stagingDirectory, "LICENSE"));
 copyFileSync(join(packageDirectory, "README.md"), join(stagingDirectory, "README.md"));
 copyNodeEntrypoint("dist/npm/driggsby/install.js", join(stagingDirectory, "install.js"));
 copyNodeEntrypoint(
-  "dist/npm/driggsby/run-driggsby.js",
-  join(stagingDirectory, "run-driggsby.js"),
+  "dist/npm/driggsby/bin/driggsby.js",
+  join(stagingDirectory, "bin", "driggsby"),
 );
 cpSync("dist/npm/driggsby/lib", join(stagingDirectory, "lib"), { recursive: true });
 writeFileSync(

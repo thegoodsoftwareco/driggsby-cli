@@ -6,7 +6,7 @@
   "repository": "https://github.com/thegoodsoftwareco/driggsby-cli",
   "type": "module",
   "bin": {
-    "driggsby": "run-driggsby.js"
+    "driggsby": "bin/driggsby"
   },
   "scripts": {
     "postinstall": "node ./install.js"
@@ -16,12 +16,12 @@
     "npm": ">=9"
   },
   "files": [
+    "bin",
     "LICENSE",
     "README.md",
     "install.js",
     "lib",
-    "package.json",
-    "run-driggsby.js"
+    "package.json"
   ],
   "driggsbyArtifacts": {
     "baseUrl": "https://github.com/thegoodsoftwareco/driggsby-cli/releases/download/driggsby-v0.1.21",

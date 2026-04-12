@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   createWriteStream,
@@ -6,6 +6,7 @@ import {
   lstatSync,
   mkdtempSync,
   mkdirSync,
+  renameSync,
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,8 +14,8 @@ import { basename, join } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
-  installDirectory,
-  installedBinaryPath,
+  packageBinDirectory,
+  packageBinPath,
   readPackageJson,
   resolvePlatform,
   unsupportedPlatformMessage,
@@ -26,13 +27,16 @@ const packageJson = readPackageJson();
 try {
   await install();
 } catch (error) {
-  if (error instanceof Error) {
-    console.error(error.message);
-  } else {
-    console.error(error);
+  console.error(publicInstallErrorMessage(error));
+  process.exit(1);
+}
+
+function publicInstallErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.startsWith("Driggsby ")) {
+    return error.message;
   }
 
-  process.exit(1);
+  return "Driggsby native binary could not be installed. Check your network connection and reinstall with npm scripts enabled.";
 }
 
 async function install(): Promise<void> {
@@ -44,14 +48,11 @@ async function install(): Promise<void> {
     return;
   }
 
-  const binaryPath = installedBinaryPath(platform.binaryPath);
+  validatePlatformConfig(platform);
+  ensurePackageBinDirectory();
 
-  if (existsSync(binaryPath)) {
-    return;
-  }
-
-  rmSync(installDirectory, { force: true, recursive: true });
-  mkdirSync(installDirectory, { recursive: true });
+  const binaryPath = packageBinPath;
+  const tempBinaryPath = join(packageBinDirectory, `.${platform.binaryPath}.${randomUUID()}.tmp`);
 
   const artifactUrl = `${packageJson.driggsbyArtifacts.baseUrl}/${platform.artifactName}`;
   const tempDirectory = mkdtempSync(join(tmpdir(), "driggsby-install-"));
@@ -65,13 +66,35 @@ async function install(): Promise<void> {
     }
 
     await downloadAndVerifyFile(artifactUrl, tempArtifact, expectedChecksum);
-    extractTarball(tempArtifact, installDirectory, platform.binaryPath);
-    chmodSync(binaryPath, 0o755);
+    extractTarball(tempArtifact, tempBinaryPath, platform.binaryPath);
+    chmodSync(tempBinaryPath, 0o755);
+    renameSync(tempBinaryPath, binaryPath);
   } catch (error) {
-    rmSync(installDirectory, { force: true, recursive: true });
+    rmSync(tempBinaryPath, { force: true });
     throw error;
   } finally {
     rmSync(tempDirectory, { force: true, recursive: true });
+  }
+}
+
+function validatePlatformConfig(platform: { artifactName: string; binaryPath: string }): void {
+  if (platform.binaryPath !== "driggsby") {
+    throw new Error("Driggsby package contains unsupported binary metadata.");
+  }
+
+  if (!/^driggsby-[A-Za-z0-9_-]+\.tar\.xz$/.test(platform.artifactName)) {
+    throw new Error("Driggsby package contains unsupported artifact metadata.");
+  }
+}
+
+function ensurePackageBinDirectory(): void {
+  if (!existsSync(packageBinDirectory)) {
+    mkdirSync(packageBinDirectory, { recursive: true });
+  }
+
+  const stats = lstatSync(packageBinDirectory);
+  if (!stats.isDirectory() || stats.isSymbolicLink()) {
+    throw new Error("Driggsby package bin directory is not a regular directory.");
   }
 }
 
@@ -120,16 +143,31 @@ async function downloadAndVerifyFile(
 function extractTarball(artifactPath: string, destination: string, binaryPath: string): void {
   const tarPath = trustedTarPath();
   const entry = findBinaryTarEntry(tarPath, artifactPath, binaryPath);
-  const installedBinary = join(destination, binaryPath);
 
-  writeCommandOutputToFile(tarPath, ["-xOf", artifactPath, "--", entry], installedBinary, maxArtifactBytes);
+  assertRegularTarEntry(tarPath, artifactPath, entry, binaryPath);
+  writeCommandOutputToFile(tarPath, ["-xOf", artifactPath, "--", entry], destination, maxArtifactBytes);
 
-  if (!existsSync(installedBinary)) {
+  if (!existsSync(destination)) {
     throw new Error(`Driggsby archive did not contain expected binary ${binaryPath}.`);
   }
 
-  const installedBinaryStats = lstatSync(installedBinary);
+  const installedBinaryStats = lstatSync(destination);
   if (!installedBinaryStats.isFile() || installedBinaryStats.isSymbolicLink()) {
+    throw new Error(`Driggsby archive entry ${binaryPath} was not a regular file.`);
+  }
+}
+
+function assertRegularTarEntry(
+  tarPath: string,
+  artifactPath: string,
+  entry: string,
+  binaryPath: string,
+): void {
+  const listings = readCommandOutput(tarPath, ["-tvf", artifactPath, "--", entry])
+    .split("\n")
+    .filter((line) => line.trim().length > 0);
+
+  if (listings.length !== 1 || !listings[0]?.startsWith("-")) {
     throw new Error(`Driggsby archive entry ${binaryPath} was not a regular file.`);
   }
 }
