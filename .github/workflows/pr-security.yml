@@ -91,39 +91,63 @@ jobs:
         run: cargo build --locked
 
   cargo-audit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Restore Rust caches
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: |
-            ~/.cargo/bin/cargo-audit
-            ~/.cargo/advisory-db
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-audit-${{ runner.os }}-${{ env.CARGO_AUDIT_VERSION }}-${{ hashFiles('Cargo.lock', '.cargo/audit.toml') }}
-          restore-keys: |
-            cargo-audit-${{ runner.os }}-${{ env.CARGO_AUDIT_VERSION }}-
-            cargo-audit-${{ runner.os }}-
 
       - name: Install Rust toolchain
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
 
+      - name: Compute cargo-audit cache ABI
+        id: cargo-audit-cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          glibc_hash="$(ldd --version | head -n 1 | sha256sum | cut -d ' ' -f 1)"
+          rustc_version="$(rustc -Vv | awk '/^host:/ { print $2 }')"
+          echo "abi=${{ runner.os }}-${{ runner.arch }}-${rustc_version}-${glibc_hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore cargo-audit binary cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-bin-${{ steps.cargo-audit-cache.outputs.abi }}-${{ env.CARGO_AUDIT_VERSION }}
+
+      - name: Restore Rust audit data caches
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/advisory-db
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-audit-data-${{ runner.os }}-${{ env.CARGO_AUDIT_VERSION }}-${{ hashFiles('Cargo.lock', '.cargo/audit.toml') }}
+          restore-keys: |
+            cargo-audit-data-${{ runner.os }}-${{ env.CARGO_AUDIT_VERSION }}-
+            cargo-audit-data-${{ runner.os }}-
+
       - name: Install cargo-audit
         shell: bash
         run: |
-          if ! command -v cargo-audit >/dev/null 2>&1; then
+          set -euo pipefail
+          audit_bin="$HOME/.cargo/bin/cargo-audit"
+          needs_install=false
+          if [ ! -x "$audit_bin" ]; then
+            needs_install=true
+          elif ! "$audit_bin" --version | grep -Fx "cargo-audit $CARGO_AUDIT_VERSION" >/dev/null; then
+            needs_install=true
+          fi
+          if [ "$needs_install" = true ]; then
+            rm -f "$audit_bin"
             cargo install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked --debug
           fi
 
       - name: Audit Rust dependencies
-        run: cargo audit --deny warnings
+        run: |
+          "$HOME/.cargo/bin/cargo-audit" audit --deny warnings
 
   release-surface-smoke:
     runs-on: ubuntu-latest
