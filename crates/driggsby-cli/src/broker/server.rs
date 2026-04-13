@@ -15,6 +15,10 @@ use super::{
     remote_mcp::RemoteMcpClient,
     remote_session::ensure_fresh_remote_session,
     secret_store::SecretStore,
+    secrets::{
+        BrokerDpopKeyPair, read_broker_remote_session_secrets, verify_broker_remote_session_binding,
+    },
+    session::read_broker_remote_session_snapshot,
     types::{BrokerRequest, BrokerResponse},
 };
 
@@ -58,7 +62,7 @@ impl LocalBrokerServer {
         })
     }
 
-    pub async fn run(self, dpop_keys: super::installation::BrokerDpopKeyPair) -> Result<()> {
+    pub async fn run(self, dpop_keys: BrokerDpopKeyPair) -> Result<()> {
         let shared = Arc::new(self);
         loop {
             let (stream, _) = shared.listener.accept().await?;
@@ -70,11 +74,7 @@ impl LocalBrokerServer {
         }
     }
 
-    async fn handle_stream(
-        &self,
-        stream: UnixStream,
-        dpop_keys: super::installation::BrokerDpopKeyPair,
-    ) -> Result<()> {
+    async fn handle_stream(&self, stream: UnixStream, dpop_keys: BrokerDpopKeyPair) -> Result<()> {
         let (reader, mut writer) = stream.into_split();
         let mut reader = BufReader::new(reader);
         let mut line = String::new();
@@ -102,7 +102,7 @@ impl LocalBrokerServer {
     async fn dispatch_request(
         &self,
         request: BrokerRequest,
-        dpop_keys: super::installation::BrokerDpopKeyPair,
+        dpop_keys: BrokerDpopKeyPair,
     ) -> Result<BrokerResponse> {
         if request.auth_token != self.auth_token {
             return Ok(BrokerResponse {
@@ -131,28 +131,32 @@ impl LocalBrokerServer {
                 std::process::exit(0);
             }
             "list_tools" => {
-                let session = ensure_fresh_remote_session(
+                ensure_fresh_remote_session(
                     &self.runtime_paths,
                     self.secret_store.as_ref(),
                     &self.broker_id,
                 )
                 .await?;
+                let summary = self.remote_session_summary()?;
+                let secrets = self.remote_session_secrets(&summary)?;
                 json!({
-                    "tools": self.remote_client.list_tools(&session, &dpop_keys).await?
+                    "tools": self.remote_client.list_tools(&summary, &secrets, &dpop_keys).await?
                 })
             }
             "call_tool" => {
-                let session = ensure_fresh_remote_session(
+                ensure_fresh_remote_session(
                     &self.runtime_paths,
                     self.secret_store.as_ref(),
                     &self.broker_id,
                 )
                 .await?;
+                let summary = self.remote_session_summary()?;
+                let secrets = self.remote_session_secrets(&summary)?;
                 let tool_name = request
                     .tool_name
                     .ok_or_else(|| anyhow::anyhow!("Missing tool name."))?;
                 self.remote_client
-                    .call_tool(&session, &dpop_keys, &tool_name, request.args)
+                    .call_tool(&summary, &secrets, &dpop_keys, &tool_name, request.args)
                     .await?
             }
             _ => bail!("CLI request failed."),
@@ -165,6 +169,23 @@ impl LocalBrokerServer {
             result: Some(result),
             error: None,
         })
+    }
+
+    fn remote_session_summary(&self) -> Result<super::session::BrokerRemoteSessionSummary> {
+        Ok(read_broker_remote_session_snapshot(&self.runtime_paths)?
+            .ok_or_else(|| PublicBrokerError::new("The Driggsby CLI is not connected."))?
+            .session)
+    }
+
+    fn remote_session_secrets(
+        &self,
+        summary: &super::session::BrokerRemoteSessionSummary,
+    ) -> Result<super::secrets::BrokerRemoteSessionSecrets> {
+        let secrets =
+            read_broker_remote_session_secrets(self.secret_store.as_ref(), &self.broker_id)?
+                .ok_or_else(|| PublicBrokerError::new("The Driggsby CLI is not connected."))?;
+        verify_broker_remote_session_binding(summary, &secrets)?;
+        Ok(secrets)
     }
 }
 

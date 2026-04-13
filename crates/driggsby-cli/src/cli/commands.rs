@@ -20,14 +20,11 @@ pub async fn run_login_command(runtime_paths: &RuntimePaths) -> Result<()> {
     println!("Preparing Driggsby sign-in...");
     flush_stdout()?;
 
-    let resolved_secret_store = resolve_secret_store(runtime_paths)?;
-    if let Some(notice) = &resolved_secret_store.notice {
-        println!("{notice}");
-    }
+    let resolved_store = resolve_secret_store(runtime_paths)?;
 
     login_broker(
         runtime_paths,
-        resolved_secret_store.store.as_ref(),
+        resolved_store.store.as_ref(),
         print_manual_sign_in_url,
     )
     .await?;
@@ -53,12 +50,9 @@ fn flush_stdout() -> Result<()> {
 }
 
 pub async fn run_logout_command(runtime_paths: &RuntimePaths) -> Result<()> {
-    let resolved_secret_store = resolve_secret_store_for_logout(runtime_paths)?;
-    let _ = shutdown_broker(runtime_paths, resolved_secret_store.store.as_ref()).await;
-    clear_broker_installation(runtime_paths, resolved_secret_store.store.as_ref())?;
-    if let Some(notice) = resolved_secret_store.notice {
-        println!("{notice}");
-    }
+    let resolved_store = resolve_secret_store_for_logout(runtime_paths)?;
+    let _ = shutdown_broker(runtime_paths, resolved_store.store.as_ref()).await;
+    clear_broker_installation(runtime_paths, resolved_store.store.as_ref())?;
     println!("Disconnected.");
     println!();
     println!("Local CLI session data has been cleared.");

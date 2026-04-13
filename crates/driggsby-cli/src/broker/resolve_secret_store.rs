@@ -145,7 +145,7 @@ mod tests {
         write_json_file(
             &runtime_paths.metadata_path,
             &BrokerMetadata {
-                schema_version: 1,
+                schema_version: 2,
                 broker_id: "019d754f-2ca2-73b0-bf51-3c689d49c469".to_string(),
                 created_at: "2026-04-10T02:15:54Z".to_string(),
                 dpop: BrokerDpopMetadata {

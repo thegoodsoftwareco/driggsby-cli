@@ -6,9 +6,6 @@ use crate::{
     runtime_paths::RuntimePaths,
 };
 
-use super::secret_store::SecretStore;
-
-const REMOTE_SESSION_ACCOUNT_SUFFIX: &str = "remote-session";
 const SESSION_SNAPSHOT_SCHEMA_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,46 +29,16 @@ pub struct BrokerRemoteSessionSummary {
     pub authenticated_at: String,
     pub client_id: String,
     pub issuer: String,
+    pub redirect_uri: String,
     pub resource: String,
     pub scope: String,
+    pub token_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrokerRemoteSessionSnapshot {
     pub schema_version: u8,
     pub session: BrokerRemoteSessionSummary,
-}
-
-pub fn read_broker_remote_session(
-    secret_store: &dyn SecretStore,
-    broker_id: &str,
-) -> Result<Option<BrokerRemoteSession>> {
-    match secret_store.get_secret(&remote_session_account_name(broker_id))? {
-        Some(raw) => {
-            let mut parsed: BrokerRemoteSession = serde_json::from_str(&raw)?;
-            if parsed.token_type.is_empty() {
-                parsed.token_type = "Bearer".to_string();
-            }
-            Ok(Some(parsed))
-        }
-        None => Ok(None),
-    }
-}
-
-pub fn write_broker_remote_session(
-    secret_store: &dyn SecretStore,
-    broker_id: &str,
-    session: &BrokerRemoteSession,
-) -> Result<()> {
-    secret_store.set_secret(
-        &remote_session_account_name(broker_id),
-        &serde_json::to_string(session)?,
-    )
-}
-
-pub fn clear_broker_remote_session(secret_store: &dyn SecretStore, broker_id: &str) -> Result<()> {
-    let _ = secret_store.delete_secret(&remote_session_account_name(broker_id))?;
-    Ok(())
 }
 
 pub fn read_broker_remote_session_snapshot(
@@ -105,11 +72,9 @@ pub fn summarize_broker_remote_session(
         authenticated_at: session.authenticated_at.clone(),
         client_id: session.client_id.clone(),
         issuer: session.issuer.clone(),
+        redirect_uri: session.redirect_uri.clone(),
         resource: session.resource.clone(),
         scope: session.scope.clone(),
+        token_type: session.token_type.clone(),
     }
-}
-
-fn remote_session_account_name(broker_id: &str) -> String {
-    format!("driggsby__{broker_id}__{REMOTE_SESSION_ACCOUNT_SUFFIX}")
 }

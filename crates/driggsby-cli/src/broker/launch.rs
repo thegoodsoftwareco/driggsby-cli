@@ -4,10 +4,15 @@ use anyhow::{Result, bail};
 use fs2::FileExt;
 use tokio::{process::Command, time::sleep};
 
-use crate::{runtime_paths::RuntimePaths, user_guidance::build_broker_investigation_message};
+use crate::{
+    runtime_paths::RuntimePaths,
+    user_guidance::{build_broker_investigation_message, build_reauthentication_required_message},
+};
 
 use super::{
     client::{ping_broker, shutdown_broker},
+    installation::read_broker_installation_with_secrets,
+    public_error::PublicBrokerError,
     secret_store::SecretStore,
 };
 
@@ -19,6 +24,15 @@ pub async fn ensure_broker_running(
     current_exe: &Path,
 ) -> Result<()> {
     let _startup_lock = BrokerStartupLock::acquire(runtime_paths)?;
+
+    if read_broker_installation_with_secrets(runtime_paths, secret_store)?.is_none() {
+        return Err(
+            PublicBrokerError::new(build_reauthentication_required_message(
+                "The Driggsby CLI is not connected",
+            ))
+            .into(),
+        );
+    }
 
     if running_broker_matches_current_version(runtime_paths, secret_store).await? {
         return Ok(());

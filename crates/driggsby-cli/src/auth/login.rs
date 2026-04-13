@@ -4,9 +4,8 @@ use crate::{
     broker::{
         installation::{ensure_broker_installation, read_broker_dpop_key_pair},
         secret_store::SecretStore,
-        session::{
-            BrokerRemoteSession, write_broker_remote_session, write_broker_remote_session_snapshot,
-        },
+        secrets::write_broker_remote_session,
+        session::{BrokerRemoteSession, write_broker_remote_session_snapshot},
     },
     runtime_paths::RuntimePaths,
     user_guidance::build_reauthentication_required_message,
@@ -47,6 +46,10 @@ pub async fn login_broker(
     let metadata = ensure_broker_installation(runtime_paths, secret_store).await?;
     let protected_resource_metadata =
         fetch_protected_resource_metadata(&config.protected_resource_metadata_url).await?;
+    assert_broker_remote_url(
+        &protected_resource_metadata.authorization_server,
+        "The Driggsby authorization server URL",
+    )?;
     let authorization_server_metadata =
         fetch_authorization_server_metadata(&protected_resource_metadata.authorization_server)
             .await?;

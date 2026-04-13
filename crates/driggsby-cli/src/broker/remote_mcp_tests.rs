@@ -10,7 +10,9 @@ use tokio::time::{Duration, sleep};
 use crate::auth::dpop::generate_dpop_key_material;
 
 use super::{
-    installation::BrokerDpopKeyPair, remote_mcp::RemoteMcpClient, session::BrokerRemoteSession,
+    remote_mcp::RemoteMcpClient,
+    secrets::{BrokerDpopKeyPair, BrokerRemoteSessionSecrets},
+    session::{BrokerRemoteSession, summarize_broker_remote_session},
 };
 
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
@@ -63,12 +65,14 @@ async fn coalesces_tool_discovery_and_handles_parallel_calls() -> anyhow::Result
     let mut tasks = tokio::task::JoinSet::new();
     for index in 0..20 {
         let client = client.clone();
-        let session = session.clone();
+        let summary = summarize_broker_remote_session(&session);
+        let secrets = test_session_secrets(&session);
         let dpop_keys = dpop_keys.clone();
         tasks.spawn(async move {
             client
                 .call_tool(
-                    &session,
+                    &summary,
+                    &secrets,
                     &dpop_keys,
                     "echo_balance",
                     Some(json!({ "amount": format!("{index}") })),
@@ -132,7 +136,8 @@ async fn supports_stateless_remote_mcp_without_session_header() -> anyhow::Resul
 
     let result = client
         .call_tool(
-            &session,
+            &summarize_broker_remote_session(&session),
+            &test_session_secrets(&session),
             &dpop_keys,
             "echo_balance",
             Some(json!({ "amount": "stateless" })),
@@ -144,6 +149,17 @@ async fn supports_stateless_remote_mcp_without_session_header() -> anyhow::Resul
     assert_eq!(state.list_tools_count.load(Ordering::SeqCst), 1);
     assert_eq!(state.call_tool_count.load(Ordering::SeqCst), 1);
     Ok(())
+}
+
+fn test_session_secrets(session: &BrokerRemoteSession) -> BrokerRemoteSessionSecrets {
+    BrokerRemoteSessionSecrets {
+        schema_version: session.schema_version,
+        access_token: session.access_token.clone(),
+        public_binding_sha256: super::secrets::remote_session_public_binding_sha256(
+            &summarize_broker_remote_session(session),
+        ),
+        refresh_token: session.refresh_token.clone(),
+    }
 }
 
 async fn test_mcp_handler(

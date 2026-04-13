@@ -35,11 +35,7 @@ impl KeyringSecretStore {
 
         #[cfg(not(target_os = "linux"))]
         {
-            if self.probe_available() {
-                KeyringAvailability::Available
-            } else {
-                KeyringAvailability::Unavailable
-            }
+            KeyringAvailability::Available
         }
     }
 
@@ -107,27 +103,38 @@ fn linux_graphical_session_is_configured(
 
 impl SecretStore for KeyringSecretStore {
     fn set_secret(&self, account: &str, secret: &str) -> Result<()> {
-        keyring::Entry::new(&self.service_name, account)?.set_password(secret)?;
+        keyring::Entry::new(&self.service_name, account)
+            .map_err(|_| platform_secure_storage_error())?
+            .set_password(secret)
+            .map_err(|_| platform_secure_storage_error())?;
         Ok(())
     }
 
     fn get_secret(&self, account: &str) -> Result<Option<String>> {
-        let entry = keyring::Entry::new(&self.service_name, account)?;
+        let entry = keyring::Entry::new(&self.service_name, account)
+            .map_err(|_| platform_secure_storage_error())?;
         match entry.get_password() {
             Ok(secret) => Ok(Some(secret)),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(error) => Err(error.into()),
+            Err(_) => Err(platform_secure_storage_error()),
         }
     }
 
     fn delete_secret(&self, account: &str) -> Result<bool> {
-        let entry = keyring::Entry::new(&self.service_name, account)?;
+        let entry = keyring::Entry::new(&self.service_name, account)
+            .map_err(|_| platform_secure_storage_error())?;
         match entry.delete_credential() {
             Ok(()) => Ok(true),
             Err(keyring::Error::NoEntry) => Ok(false),
-            Err(error) => Err(error.into()),
+            Err(_) => Err(platform_secure_storage_error()),
         }
     }
+}
+
+fn platform_secure_storage_error() -> anyhow::Error {
+    anyhow::anyhow!(
+        "Driggsby could not access platform secure storage. Reopen the desktop session or restore keychain access, then try again."
+    )
 }
 
 fn hex_string(bytes: &[u8]) -> String {
@@ -197,8 +204,8 @@ mod tests {
             return Ok(());
         }
 
-        let account = "driggsby__019d754f-2ca2-73b0-bf51-3c689d49c469__dpop-private-jwk";
-        let secret = "{\"kty\":\"EC\"}";
+        let account = "driggsby__019d754f-2ca2-73b0-bf51-3c689d49c469__broker-secrets";
+        let secret = "{\"schema_version\":1}";
 
         store.set_secret(account, secret)?;
         let loaded = store.get_secret(account)?;

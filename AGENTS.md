@@ -4,6 +4,10 @@ This repository contains the public, open-source Driggsby CLI. The CLI is the
 local MCP bridge that lets users connect AI clients such as Codex, Claude, and
 other MCP clients to Driggsby.
 
+Driggsby is a personal financial MCP server that provides secure access to users'
+financial data (such as balances, transactions, and investments) to their AI client
+or agent of choice. As such, security is non-negotiable and is your top priority.
+
 ## Project Scope
 
 - This repo owns the Rust CLI, npm wrapper package, GitHub Release artifacts, and
