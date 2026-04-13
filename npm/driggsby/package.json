@@ -1,6 +1,6 @@
 {
   "name": "driggsby",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "Local MCP broker and CLI for connecting AI clients to Driggsby",
   "license": "Apache-2.0",
   "repository": "https://github.com/thegoodsoftwareco/driggsby-cli",
@@ -24,7 +24,7 @@
     "package.json"
   ],
   "driggsbyArtifacts": {
-    "baseUrl": "https://github.com/thegoodsoftwareco/driggsby-cli/releases/download/driggsby-v0.1.23",
+    "baseUrl": "https://github.com/thegoodsoftwareco/driggsby-cli/releases/download/driggsby-v0.1.24",
     "checksums": {},
     "supportedPlatforms": {
       "aarch64-apple-darwin": {

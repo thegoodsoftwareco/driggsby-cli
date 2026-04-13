@@ -9,6 +9,7 @@ pub mod remote_mcp;
 pub mod remote_session;
 pub mod resolve_secret_store;
 pub mod secret_store;
+pub mod secrets;
 pub mod server;
 pub mod session;
 pub mod types;

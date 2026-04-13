@@ -22,8 +22,9 @@ use super::{
     public_error::PublicBrokerError,
     remote_mcp::RemoteMcpClient,
     secret_store::SecretStore,
+    secrets::write_broker_remote_session,
     server::LocalBrokerServer,
-    session::{BrokerRemoteSession, write_broker_remote_session},
+    session::{BrokerRemoteSession, write_broker_remote_session_snapshot},
 };
 
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
@@ -89,23 +90,21 @@ async fn local_broker_handles_parallel_forwarded_calls() -> Result<()> {
         let _ = axum::serve(listener, app).await;
     });
 
-    write_broker_remote_session(
-        secret_store.as_ref(),
-        &metadata.broker_id,
-        &BrokerRemoteSession {
-            schema_version: 1,
-            access_token: "access-token".to_string(),
-            access_token_expires_at: "2099-01-01T00:00:00Z".to_string(),
-            authenticated_at: "2099-01-01T00:00:00Z".to_string(),
-            client_id: "client-123".to_string(),
-            issuer: format!("http://127.0.0.1:{}", address.port()),
-            redirect_uri: "http://127.0.0.1/callback".to_string(),
-            refresh_token: "refresh-token".to_string(),
-            resource: format!("http://127.0.0.1:{}/mcp", address.port()),
-            scope: "driggsby.default".to_string(),
-            token_type: "DPoP".to_string(),
-        },
-    )?;
+    let session = BrokerRemoteSession {
+        schema_version: 1,
+        access_token: "access-token".to_string(),
+        access_token_expires_at: "2099-01-01T00:00:00Z".to_string(),
+        authenticated_at: "2099-01-01T00:00:00Z".to_string(),
+        client_id: "client-123".to_string(),
+        issuer: format!("http://127.0.0.1:{}", address.port()),
+        redirect_uri: "http://127.0.0.1/callback".to_string(),
+        refresh_token: "refresh-token".to_string(),
+        resource: format!("http://127.0.0.1:{}/mcp", address.port()),
+        scope: "driggsby.default".to_string(),
+        token_type: "DPoP".to_string(),
+    };
+    write_broker_remote_session(secret_store.as_ref(), &metadata.broker_id, &session)?;
+    write_broker_remote_session_snapshot(&runtime_paths, &session)?;
 
     let Some(auth_token) =
         read_broker_local_auth_token(secret_store.as_ref(), &metadata.broker_id)?

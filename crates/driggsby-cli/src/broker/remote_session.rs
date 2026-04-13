@@ -15,9 +15,9 @@ use super::{
     installation::read_broker_dpop_key_pair,
     public_error::PublicBrokerError,
     secret_store::SecretStore,
+    secrets::{read_broker_remote_session, write_broker_remote_session},
     session::{
-        BrokerRemoteSession, BrokerRemoteSessionSummary, read_broker_remote_session,
-        summarize_broker_remote_session, write_broker_remote_session,
+        BrokerRemoteSession, BrokerRemoteSessionSummary, summarize_broker_remote_session,
         write_broker_remote_session_snapshot,
     },
     types::BrokerRemoteAccessState,
@@ -54,7 +54,7 @@ pub async fn ensure_fresh_remote_session(
     secret_store: &dyn SecretStore,
     broker_id: &str,
 ) -> Result<BrokerRemoteSession> {
-    let Some(session) = read_broker_remote_session(secret_store, broker_id)? else {
+    let Some(session) = read_broker_remote_session(runtime_paths, secret_store, broker_id)? else {
         return Err(
             PublicBrokerError::new(build_reauthentication_required_message(
                 "The Driggsby CLI is not connected",
@@ -111,7 +111,7 @@ pub async fn inspect_remote_session_readiness(
     broker_id: &str,
     refresh_if_needed: bool,
 ) -> Result<BrokerRemoteSessionReadiness> {
-    let Some(session) = read_broker_remote_session(secret_store, broker_id)? else {
+    let Some(session) = read_broker_remote_session(runtime_paths, secret_store, broker_id)? else {
         return Ok(BrokerRemoteSessionReadiness {
             connected: false,
             detail: "The CLI does not have a saved session yet.".to_string(),

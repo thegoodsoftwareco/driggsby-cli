@@ -157,17 +157,7 @@ fn resolve_remote_access_state(status: &BrokerStatus) -> BrokerRemoteAccessState
     status
         .remote_access_state
         .clone()
-        .unwrap_or_else(|| infer_legacy_remote_access_state(status))
-}
-
-fn infer_legacy_remote_access_state(status: &BrokerStatus) -> BrokerRemoteAccessState {
-    if status.remote_mcp_ready {
-        return BrokerRemoteAccessState::Ready;
-    }
-    if status.remote_session.is_some() {
-        return BrokerRemoteAccessState::TemporarilyUnavailable;
-    }
-    BrokerRemoteAccessState::NotConnected
+        .unwrap_or(BrokerRemoteAccessState::NotConnected)
 }
 
 #[cfg(test)]
@@ -187,8 +177,10 @@ mod tests {
             authenticated_at: "2026-04-10T02:15:54Z".to_string(),
             client_id: "client-123".to_string(),
             issuer: "https://app.driggsby.com".to_string(),
+            redirect_uri: "http://127.0.0.1/callback".to_string(),
             resource: "https://app.driggsby.com/mcp".to_string(),
             scope: "driggsby.default".to_string(),
+            token_type: "DPoP".to_string(),
         }
     }
 
