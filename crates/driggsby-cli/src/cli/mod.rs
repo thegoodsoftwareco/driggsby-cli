@@ -1,4 +1,3 @@
-mod client_config_cleanup;
 mod client_id;
 pub mod commands;
 pub mod connect;
@@ -12,15 +11,15 @@ use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 
 const EXAMPLES: &str = "\
 Examples:
-  npx driggsby@latest mcp connect
-  npx driggsby@latest mcp connect claude-code
-  npx driggsby@latest mcp connect claude-desktop
-  npx driggsby@latest mcp connect codex
-  npx driggsby@latest mcp connect claude-code --mcp-scope user
-  npx driggsby@latest mcp connect codex --no-auto-add-mcp-config
+  npx driggsby@latest mcp setup
+  npx driggsby@latest mcp setup claude-code
+  npx driggsby@latest mcp setup claude-desktop
+  npx driggsby@latest mcp setup codex
+  npx driggsby@latest mcp setup claude-code --mcp-scope user
+  npx driggsby@latest mcp setup codex --no-auto-add-mcp-config
   npx driggsby@latest mcp list
-  npx driggsby@latest mcp disconnect codex
-  npx driggsby@latest mcp disconnect-all
+  npx driggsby@latest mcp revoke codex
+  npx driggsby@latest mcp revoke-all
   npx driggsby@latest status
   npx -y driggsby@latest mcp-server";
 
@@ -32,7 +31,7 @@ Examples:
     arg_required_else_help = true,
     disable_help_subcommand = true,
     about = "Connect AI clients to your Driggsby financial data over MCP.",
-    long_about = "Connect AI clients to your Driggsby financial data over MCP.\n\n  npx driggsby@latest mcp connect      # set up a client\n  npx driggsby@latest status            # check readiness",
+    long_about = "Connect AI clients to your Driggsby financial data over MCP.\n\n  npx driggsby@latest mcp setup       # set up a client\n  npx driggsby@latest status          # check readiness",
     after_help = EXAMPLES,
 )]
 pub struct Cli {
@@ -58,10 +57,13 @@ pub enum Commands {
 #[derive(Debug, Clone, Subcommand)]
 pub enum McpCommand {
     #[command(
-        about = "Connect an AI client to Driggsby.",
-        long_about = "Connect an AI client to Driggsby.\n\nRun once per client. Opens browser sign-in if needed.\n\nSupported clients: claude-code, claude-desktop, codex\nOther IDs: letters, numbers, and hyphens."
+        name = "setup",
+        alias = "connect",
+        alias = "add",
+        about = "Set up Driggsby for an AI client.",
+        long_about = "Set up Driggsby for an AI client.\n\nRun once per client. Opens browser sign-in if needed.\n\nSupported clients: claude-code, claude-desktop, codex\nOther IDs: letters, numbers, and hyphens."
     )]
-    Connect {
+    Setup {
         #[arg(help = "Client ID: claude-code, claude-desktop, codex, or custom.")]
         client: Option<String>,
         #[arg(long, help = "Print MCP config instead of auto-adding it.")]
@@ -76,25 +78,30 @@ pub enum McpCommand {
     #[command(about = "List connected clients.")]
     List,
     #[command(
-        about = "Disconnect a client.",
-        long_about = "Disconnect a client.\n\nRun this command to see connected client IDs:\n  npx driggsby@latest mcp list\n\nSupported client IDs: claude-code, claude-desktop, codex\nCustom IDs are the names shown by mcp list."
+        name = "revoke",
+        alias = "disconnect",
+        alias = "remove",
+        about = "Revoke a client key.",
+        long_about = "Revoke a client key.\n\nRun this command to see connected client IDs:\n  npx driggsby@latest mcp list\n\nSupported client IDs: claude-code, claude-desktop, codex\nCustom IDs are the names shown by mcp list."
     )]
-    Disconnect {
+    Revoke {
         #[arg(help = "Client ID: claude-code, claude-desktop, codex, or custom.")]
         client: Option<String>,
     },
     #[command(
-        name = "disconnect-all",
-        about = "Disconnect all clients and clear local state."
+        name = "revoke-all",
+        alias = "disconnect-all",
+        alias = "remove-all",
+        about = "Revoke Driggsby access on this device."
     )]
-    DisconnectAll,
+    RevokeAll,
 }
 
 #[derive(Debug, Clone)]
 pub enum McpClientAction {
     List,
-    Disconnect { client: Option<String> },
-    DisconnectAll,
+    Revoke { client: Option<String> },
+    RevokeAll,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -131,16 +138,21 @@ mod tests {
     fn help_mentions_happy_path_and_examples() {
         let help = render_help();
 
-        assert!(help.contains("npx driggsby@latest mcp connect"));
-        assert!(help.contains("npx driggsby@latest mcp connect claude-code"));
-        assert!(help.contains("npx driggsby@latest mcp connect claude-desktop"));
+        assert!(help.contains("npx driggsby@latest mcp setup"));
+        assert!(help.contains("npx driggsby@latest mcp setup claude-code"));
+        assert!(help.contains("npx driggsby@latest mcp setup claude-desktop"));
         assert!(help.contains("npx driggsby@latest mcp list"));
         assert!(help.contains("--no-auto-add-mcp-config"));
         assert!(help.contains("--mcp-scope"));
-        assert!(help.contains("npx driggsby@latest mcp disconnect-all"));
+        assert!(help.contains("npx driggsby@latest mcp revoke-all"));
+        assert!(!help.contains("npx driggsby@latest mcp add"));
+        assert!(!help.contains("npx driggsby@latest mcp remove"));
+        assert!(!help.contains("npx driggsby@latest mcp remove-all"));
+        assert!(!help.contains("npx driggsby@latest mcp connect"));
+        assert!(!help.contains("npx driggsby@latest mcp disconnect"));
+        assert!(!help.contains("npx driggsby@latest mcp disconnect-all"));
         assert!(!help.contains("npx driggsby@latest mcp clients"));
         assert!(!help.contains("npx driggsby@latest login"));
-        assert!(!help.contains("npx driggsby@latest revoke-all"));
         assert!(!help.contains("npx driggsby@latest logout"));
         assert!(help.contains("npx -y driggsby@latest mcp-server"));
         assert!(help.contains("npx driggsby@latest status"));

@@ -365,7 +365,7 @@ impl RemoteMcpClient {
             || response.status() == reqwest::StatusCode::FORBIDDEN
         {
             return Err(PublicBrokerError::new(
-                "Driggsby session expired.\n\nNext:\n  npx driggsby@latest mcp connect",
+                "Driggsby session expired.\n\nNext:\n  npx driggsby@latest mcp setup",
             )
             .into());
         }

@@ -27,7 +27,7 @@ async fn run() -> Result<()> {
 
     match cli.command {
         Commands::Mcp { command } => match command {
-            McpCommand::Connect {
+            McpCommand::Setup {
                 client,
                 no_auto_add_mcp_config,
                 mcp_scope,
@@ -37,19 +37,15 @@ async fn run() -> Result<()> {
             McpCommand::List => {
                 run_clients_command(&runtime_paths, driggsby::cli::McpClientAction::List).await
             }
-            McpCommand::Disconnect { client } => {
+            McpCommand::Revoke { client } => {
                 run_clients_command(
                     &runtime_paths,
-                    driggsby::cli::McpClientAction::Disconnect { client },
+                    driggsby::cli::McpClientAction::Revoke { client },
                 )
                 .await
             }
-            McpCommand::DisconnectAll => {
-                run_clients_command(
-                    &runtime_paths,
-                    driggsby::cli::McpClientAction::DisconnectAll,
-                )
-                .await
+            McpCommand::RevokeAll => {
+                run_clients_command(&runtime_paths, driggsby::cli::McpClientAction::RevokeAll).await
             }
         },
         Commands::Status => run_status_command(&runtime_paths).await,

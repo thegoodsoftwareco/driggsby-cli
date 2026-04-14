@@ -418,7 +418,7 @@ mod tests {
         );
         assert_eq!(
             status.next_step_command.as_deref(),
-            Some("npx driggsby@latest mcp connect")
+            Some("npx driggsby@latest mcp setup")
         );
         assert!(status.remote_session.is_none());
         Ok(())
@@ -453,7 +453,7 @@ mod tests {
 
         assert!(message.is_some_and(|value| {
             value.contains("local CLI auth state is incomplete")
-                && value.contains("npx driggsby@latest mcp connect")
+                && value.contains("npx driggsby@latest mcp setup")
                 && !value.contains("expected")
         }));
         Ok(())

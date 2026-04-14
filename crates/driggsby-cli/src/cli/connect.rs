@@ -17,7 +17,6 @@ use crate::{
         secret_store::SecretStore,
     },
     cli::McpScope,
-    cli::client_config_cleanup::remove_known_client_configs,
     cli::client_id,
     cli::connect_session::ensure_recent_cli_session,
     cli::desktop_mcp_config::install_desktop_mcp_config,
@@ -70,7 +69,7 @@ pub async fn run_connect_command(
     validate_mcp_scope(&target, mcp_scope)?;
     ensure_runtime_directories(runtime_paths)?;
     let display_name = target.display_name();
-    println!("Connecting Driggsby to {}...", display_name);
+    println!("Setting up Driggsby for {}...", display_name);
     flush_stdout()?;
 
     let resolved_store = crate::broker::resolve_secret_store::resolve_secret_store(runtime_paths)?;
@@ -122,14 +121,14 @@ pub async fn run_clients_command(
     runtime_paths: &RuntimePaths,
     command: super::McpClientAction,
 ) -> Result<()> {
-    if matches!(command, super::McpClientAction::DisconnectAll) {
-        return crate::cli::commands::run_disconnect_all_command(runtime_paths).await;
+    if matches!(command, super::McpClientAction::RevokeAll) {
+        return crate::cli::commands::run_revoke_all_command(runtime_paths).await;
     }
-    let disconnect_client = match &command {
-        super::McpClientAction::Disconnect { client } => {
+    let revoke_client = match &command {
+        super::McpClientAction::Revoke { client } => {
             Some(parse_client_selector(client.as_deref())?)
         }
-        super::McpClientAction::List | super::McpClientAction::DisconnectAll => None,
+        super::McpClientAction::List | super::McpClientAction::RevokeAll => None,
     };
 
     let Some(metadata) = read_broker_metadata(runtime_paths)? else {
@@ -139,9 +138,8 @@ pub async fn run_clients_command(
     let resolved_store = crate::broker::resolve_secret_store::resolve_secret_store(runtime_paths)?;
 
     match command {
-        super::McpClientAction::Disconnect { .. } => {
-            let client =
-                disconnect_client.ok_or_else(|| anyhow::anyhow!("Client ID is required."))?;
+        super::McpClientAction::Revoke { .. } => {
+            let client = revoke_client.ok_or_else(|| anyhow::anyhow!("Client ID is required."))?;
             let disconnected = {
                 let _client_mutation_lock = LocalStateLock::acquire(runtime_paths)?;
                 disconnect_client_grant(
@@ -153,23 +151,15 @@ pub async fn run_clients_command(
             if disconnected.is_empty() {
                 println!("No matching connected MCP client found for {client}.");
             } else {
-                println!("Disconnected {client}.");
-                remove_known_client_configs(&disconnected);
-                if disconnected.iter().any(|grant| {
-                    !grant
-                        .integration_id
-                        .as_deref()
-                        .is_some_and(is_known_client_id)
-                }) {
-                    println!();
-                    println!("Remove Driggsby from this client's MCP settings manually.");
-                }
+                println!("Revoked {client}.");
+                println!();
+                println!("MCP configs were not changed.");
             }
         }
         super::McpClientAction::List => {
             print_client_grants(resolved_store.store.as_ref(), &metadata.broker_id)?;
         }
-        super::McpClientAction::DisconnectAll => {}
+        super::McpClientAction::RevokeAll => {}
     }
     Ok(())
 }
@@ -240,7 +230,7 @@ fn parse_client_selector(value: Option<&str>) -> Result<String> {
 
 fn prompt_for_connect_target() -> Result<ConnectTarget> {
     if !io::stdin().is_terminal() {
-        bail!("Pass a client name.\n\nExample:\n  npx driggsby@latest mcp connect claude-code");
+        bail!("Pass a client name.\n\nExample:\n  npx driggsby@latest mcp setup claude-code");
     }
 
     println!("Which client are you setting up?");
@@ -295,7 +285,7 @@ async fn install_known_client(
     let output = run_config_command(&installer).await;
     match output {
         Ok(Ok(output)) if output.status.success() => {
-            println!("{} is connected.", client.display_name());
+            println!("{} is set up.", client.display_name());
             Ok(true)
         }
         Ok(Ok(output)) if command_reports_existing_config(&output) => {
@@ -341,7 +331,7 @@ async fn reinstall_existing_known_client(
             let installer = build_installer_command(cli_client, created, mcp_scope);
             match run_config_command(&installer).await {
                 Ok(Ok(output)) if output.status.success() => {
-                    println!("{} is connected.", client.display_name());
+                    println!("{} is set up.", client.display_name());
                     Ok(true)
                 }
                 _ => {
@@ -376,7 +366,7 @@ fn install_desktop_client(client: KnownClient, created: &CreatedClientGrant) -> 
 
     match install_desktop_mcp_config(desktop_client, created) {
         Ok(()) => {
-            println!("{} is connected.", client.display_name());
+            println!("{} is set up.", client.display_name());
             Ok(true)
         }
         Err(error) => {
@@ -392,7 +382,7 @@ fn print_auto_setup_failure(client: KnownClient, reason: &str) {
     println!();
     println!("Add the MCP config below manually, or fix the install and rerun:");
     println!(
-        "  npx driggsby@latest mcp connect {}",
+        "  npx driggsby@latest mcp setup {}",
         client.integration_id()
     );
     println!();
@@ -413,6 +403,9 @@ fn command_reports_existing_config(output: &std::process::Output) -> bool {
 
 fn command_reports_missing_config(output: &std::process::Output) -> bool {
     command_output_contains(output, "No MCP server found")
+        || command_output_contains(output, "No project-local MCP server found")
+        || command_output_contains(output, "No user-scoped MCP server found")
+        || command_output_contains(output, "No MCP server named 'driggsby' found")
 }
 
 fn command_output_contains(output: &std::process::Output, needle: &str) -> bool {
@@ -432,9 +425,9 @@ fn print_one_time_mcp_config_with_secret(created: &CreatedClientGrant) {
     println!();
     println!("This key is shown once - treat it like an API key.");
     println!();
-    println!("Disconnect:");
+    println!("Revoke:");
     println!(
-        "  npx driggsby@latest mcp disconnect {}",
+        "  npx driggsby@latest mcp revoke {}",
         client_id_for_grant(&created.grant)
     );
 }
@@ -457,10 +450,6 @@ fn client_id_for_grant(grant: &BrokerClientGrant) -> &str {
         .integration_id
         .as_deref()
         .unwrap_or(grant.display_name.as_str())
-}
-
-fn is_known_client_id(client_id: &str) -> bool {
-    KnownClient::from_client_id(client_id).is_some()
 }
 
 fn flush_stdout() -> Result<()> {

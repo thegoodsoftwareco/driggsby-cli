@@ -19,7 +19,7 @@ pub fn format_status_text(status: &BrokerStatus) -> String {
 
     if let Some(command) = configuration_command {
         lines.push(String::new());
-        lines.push("Connect an MCP client:".to_string());
+        lines.push("Set up an MCP client:".to_string());
         lines.push(format!("  {command}"));
     }
 
@@ -137,7 +137,7 @@ mod tests {
         });
 
         assert!(text.starts_with("Ready\n"));
-        assert!(text.contains("Connect an MCP client:\n  npx driggsby@latest mcp connect"));
+        assert!(text.contains("Set up an MCP client:\n  npx driggsby@latest mcp setup"));
         assert!(!text.contains("Session:"));
         assert!(!text.contains("Local auth broker:"));
         assert!(!text.contains("Driggsby CLI"));
@@ -161,7 +161,7 @@ mod tests {
 
         assert!(text.starts_with("Not connected\n"));
         assert!(text.contains("Sign in to connect Driggsby."));
-        assert!(text.contains("Next:\n  npx driggsby@latest mcp connect"));
+        assert!(text.contains("Next:\n  npx driggsby@latest mcp setup"));
         assert!(!text.contains('`'));
         assert!(!text.contains("Session:"));
         assert!(!text.contains("Local auth broker:"));
