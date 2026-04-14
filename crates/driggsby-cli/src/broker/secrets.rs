@@ -302,7 +302,7 @@ mod tests {
 
         assert!(error.is_some_and(|message| {
             message.contains("local CLI auth state is incomplete")
-                && message.contains("npx driggsby@latest login")
+                && message.contains("npx driggsby@latest mcp connect")
         }));
 
         // Keep this mutable variable live long enough to prove the initial write

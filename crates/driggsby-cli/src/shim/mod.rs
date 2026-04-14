@@ -15,10 +15,7 @@ use crate::{
     broker::public_error::PublicBrokerError,
     broker::{
         client::{call_broker_tool, list_broker_tools},
-        grants::{
-            CLIENT_GRANT_ID_ENV, CLIENT_GRANT_SECRET_ENV, ClientGrantCredentials,
-            missing_client_grant_error,
-        },
+        grants::{CLIENT_KEY_ENV, ClientGrantCredentials, missing_client_grant_error},
         launch::ensure_broker_running,
         resolve_secret_store::resolve_secret_store,
     },
@@ -156,9 +153,8 @@ pub async fn run_mcp_server_command(
 }
 
 fn read_client_credentials_from_env() -> Option<ClientGrantCredentials> {
-    let grant_id = env::var(CLIENT_GRANT_ID_ENV).ok()?;
-    let secret = env::var(CLIENT_GRANT_SECRET_ENV).ok()?;
-    Some(ClientGrantCredentials { grant_id, secret })
+    let client_key = env::var(CLIENT_KEY_ENV).ok()?;
+    Some(ClientGrantCredentials { client_key })
 }
 
 fn local_status_tool() -> Result<Tool> {

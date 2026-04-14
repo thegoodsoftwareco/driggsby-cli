@@ -8,14 +8,25 @@ Driggsby over MCP.
 Connect Driggsby to an MCP client:
 
 ```bash
-npx driggsby@latest connect
+npx driggsby@latest mcp connect
 ```
 
 You can also choose a supported client directly:
 
 ```bash
-npx driggsby@latest connect claude-code
-npx driggsby@latest connect codex
+npx driggsby@latest mcp connect claude-code
+npx driggsby@latest mcp connect claude-desktop
+npx driggsby@latest mcp connect codex
+```
+
+Claude Desktop automatic setup is macOS-only in this release.
+
+Claude Code MCP scope can be set explicitly. Driggsby defaults Claude Code
+setup to user scope.
+
+```bash
+npx driggsby@latest mcp connect claude-code --mcp-scope user
+npx driggsby@latest mcp connect claude-code --mcp-scope local
 ```
 
 Check readiness:

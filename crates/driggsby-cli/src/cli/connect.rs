@@ -6,58 +6,52 @@ use std::{
 use anyhow::{Result, bail};
 
 use crate::{
-    auth::login::login_broker,
+    auth::login::login_broker_with_client_name,
     broker::{
         grants::{
-            CLIENT_GRANT_ID_ENV, CLIENT_GRANT_SECRET_ENV, CreatedClientGrant, create_client_grant,
-            list_client_grants, revoke_client_grant, revoke_other_grants_for_integration,
+            CLIENT_KEY_ENV, CreatedClientGrant, create_client_grant, disconnect_client_grant,
+            disconnect_other_grants_for_integration, list_client_grants,
         },
         installation::read_broker_metadata,
         secret_store::SecretStore,
     },
+    cli::McpScope,
+    cli::client_id,
+    cli::desktop_mcp_config::{install_desktop_mcp_config, remove_desktop_mcp_config},
+    cli::known_client::KnownClient,
+    cli::supported_mcp_config::{
+        build_installer_command, build_remover_command, render_shell_command,
+    },
     runtime_paths::{RuntimePaths, ensure_runtime_directories},
 };
 
+type BrokerClientGrant = crate::broker::grants::BrokerClientGrant;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ConnectTarget {
+pub(super) enum ConnectTarget {
     Known(KnownClient),
     Other(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KnownClient {
-    ClaudeCode,
-    Codex,
-}
-
-impl KnownClient {
-    fn integration_id(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "claude-code",
-            Self::Codex => "codex",
-        }
-    }
-
-    fn display_name(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "Claude Code",
-            Self::Codex => "Codex",
-        }
-    }
-}
-
 impl ConnectTarget {
+    fn client_id(&self) -> &str {
+        match self {
+            Self::Known(client) => client.integration_id(),
+            Self::Other(client_id) => client_id.as_str(),
+        }
+    }
+
     fn display_name(&self) -> &str {
         match self {
             Self::Known(client) => client.display_name(),
-            Self::Other(name) => name.as_str(),
+            Self::Other(client_id) => client_id.as_str(),
         }
     }
 
     fn integration_id(&self) -> Option<&str> {
         match self {
             Self::Known(client) => Some(client.integration_id()),
-            Self::Other(_) => None,
+            Self::Other(client_id) => Some(client_id.as_str()),
         }
     }
 }
@@ -65,16 +59,22 @@ impl ConnectTarget {
 pub async fn run_connect_command(
     runtime_paths: &RuntimePaths,
     requested_client: Option<String>,
+    no_auto_add_mcp_config: bool,
+    mcp_scope: Option<McpScope>,
 ) -> Result<()> {
-    ensure_runtime_directories(runtime_paths)?;
     let target = resolve_connect_target(requested_client)?;
-    println!("Connecting Driggsby to {}...", target.display_name());
+    validate_connect_target(&target)?;
+    validate_mcp_scope(&target, mcp_scope)?;
+    ensure_runtime_directories(runtime_paths)?;
+    let display_name = target.display_name();
+    println!("Connecting Driggsby to {}...", display_name);
     flush_stdout()?;
 
     let resolved_store = crate::broker::resolve_secret_store::resolve_secret_store(runtime_paths)?;
-    login_broker(
+    login_broker_with_client_name(
         runtime_paths,
         resolved_store.store.as_ref(),
+        Some(display_name),
         print_manual_sign_in_url,
     )
     .await?;
@@ -84,55 +84,74 @@ pub async fn run_connect_command(
     let created = create_client_grant(
         resolved_store.store.as_ref(),
         &metadata.broker_id,
-        target.display_name(),
+        display_name,
         target.integration_id(),
     )?;
+    if let Some(integration_id) = target.integration_id() {
+        disconnect_other_grants_for_integration(
+            resolved_store.store.as_ref(),
+            &metadata.broker_id,
+            integration_id,
+            &created.grant.grant_id,
+        )?;
+    }
 
     println!();
     match target {
         ConnectTarget::Known(client) => {
-            if install_known_client(client, &created)? {
-                revoke_other_grants_for_integration(
-                    resolved_store.store.as_ref(),
-                    &metadata.broker_id,
-                    client.integration_id(),
-                    &created.grant.grant_id,
-                )?;
+            if no_auto_add_mcp_config {
+                print_one_time_mcp_config_with_secret(&created);
+            } else {
+                let _installed = install_known_client(client, &created, mcp_scope)?;
             }
         }
-        ConnectTarget::Other(_) => print_other_mcp_config(&created),
+        ConnectTarget::Other(_) => print_one_time_mcp_config_with_secret(&created),
     }
     Ok(())
 }
 
-pub fn run_clients_command(
+pub async fn run_clients_command(
     runtime_paths: &RuntimePaths,
     command: super::ClientCommand,
 ) -> Result<()> {
+    if matches!(command, super::ClientCommand::DisconnectAll) {
+        return crate::cli::commands::run_disconnect_all_command(runtime_paths).await;
+    }
+
     let resolved_store = crate::broker::resolve_secret_store::resolve_secret_store(runtime_paths)?;
     let Some(metadata) = read_broker_metadata(runtime_paths)? else {
-        println!("No approved clients.");
+        println!("No connected MCP clients.");
         return Ok(());
     };
 
     match command {
-        super::ClientCommand::Revoke { client } => {
-            let revoked =
-                revoke_client_grant(resolved_store.store.as_ref(), &metadata.broker_id, &client)?;
-            if revoked.is_empty() {
-                println!("No matching approved client found for {client}.");
+        super::ClientCommand::Disconnect { client } => {
+            let disconnected = disconnect_client_grant(
+                resolved_store.store.as_ref(),
+                &metadata.broker_id,
+                &client,
+            )?;
+            if disconnected.is_empty() {
+                println!("No matching connected MCP client found for {client}.");
             } else {
-                println!("Revoked {client}.");
-                remove_known_client_configs(&revoked);
-                if revoked.iter().any(|grant| grant.integration_id.is_none()) {
+                println!("Disconnected {client}.");
+                remove_known_client_configs(&disconnected);
+                if disconnected.iter().any(|grant| {
+                    !grant
+                        .integration_id
+                        .as_deref()
+                        .is_some_and(is_known_client_id)
+                }) {
                     println!();
-                    println!("Also remove Driggsby from that client's MCP settings.");
+                    println!("Driggsby cannot remove MCP config for this client automatically.");
+                    println!("Remove Driggsby manually from that client's MCP settings.");
                 }
             }
         }
         super::ClientCommand::List => {
             print_client_grants(resolved_store.store.as_ref(), &metadata.broker_id)?;
         }
+        super::ClientCommand::DisconnectAll => {}
     }
     Ok(())
 }
@@ -144,48 +163,77 @@ fn resolve_connect_target(requested_client: Option<String>) -> Result<ConnectTar
     }
 }
 
-fn parse_connect_target(value: &str) -> ConnectTarget {
-    let trimmed = value.trim();
-    match trimmed
-        .to_ascii_lowercase()
-        .replace(['_', ' '], "-")
-        .as_str()
-    {
-        "claude" | "claude-code" => ConnectTarget::Known(KnownClient::ClaudeCode),
-        "codex" => ConnectTarget::Known(KnownClient::Codex),
-        _ => ConnectTarget::Other(trimmed.to_string()),
+fn validate_connect_target(target: &ConnectTarget) -> Result<()> {
+    if target.client_id().trim().is_empty() {
+        bail!("Client ID is required.");
     }
+    if let ConnectTarget::Other(client_id) = target
+        && !client_id::is_valid(client_id)
+    {
+        bail!(
+            "Client ID may use only letters, numbers, and hyphens.\n\nExamples:\n  raycast\n  my-mcp-client"
+        );
+    }
+    if matches!(target, ConnectTarget::Known(KnownClient::ClaudeDesktop))
+        && !cfg!(target_os = "macos")
+    {
+        bail!("Claude Desktop automatic setup is supported only on macOS in this release.");
+    }
+    Ok(())
+}
+
+fn validate_mcp_scope(target: &ConnectTarget, mcp_scope: Option<McpScope>) -> Result<()> {
+    if mcp_scope.is_none() {
+        return Ok(());
+    }
+    if matches!(target, ConnectTarget::Known(KnownClient::ClaudeCode)) {
+        return Ok(());
+    }
+    bail!(
+        "--mcp-scope is currently supported only for Claude Code. Codex does not expose an MCP scope flag, and Claude Desktop uses its app-level config file."
+    );
+}
+
+fn parse_connect_target(value: &str) -> ConnectTarget {
+    let canonical = client_id::canonicalize(value);
+    if let Some(client) = KnownClient::from_client_id(&canonical) {
+        return ConnectTarget::Known(client);
+    }
+    ConnectTarget::Other(canonical)
 }
 
 fn prompt_for_connect_target() -> Result<ConnectTarget> {
     if !io::stdin().is_terminal() {
-        bail!("Pass a client name, such as npx driggsby@latest connect claude-code.");
+        bail!("Pass a client name.\n\nExample:\n  npx driggsby@latest mcp connect claude-code");
     }
 
     println!("Which client are you setting up?");
     println!();
     println!("  1. Claude Code");
-    println!("  2. Codex");
-    println!("  3. Other MCP client");
+    println!("  2. Claude Desktop");
+    println!("  3. Codex");
+    println!("  4. Other MCP client");
     println!();
-    print!("Choose 1-3: ");
+    print!("Choose 1-4: ");
     flush_stdout()?;
 
     let choice = read_trimmed_line()?;
     match choice.as_str() {
         "1" => Ok(ConnectTarget::Known(KnownClient::ClaudeCode)),
-        "2" => Ok(ConnectTarget::Known(KnownClient::Codex)),
-        "3" => prompt_for_other_client_name(),
-        _ => bail!("Choose 1, 2, or 3."),
+        "2" => Ok(ConnectTarget::Known(KnownClient::ClaudeDesktop)),
+        "3" => Ok(ConnectTarget::Known(KnownClient::Codex)),
+        "4" => prompt_for_other_client_name(),
+        _ => bail!("Choose 1, 2, 3, or 4."),
     }
 }
 
 fn prompt_for_other_client_name() -> Result<ConnectTarget> {
-    print!("Client name: ");
+    println!("Use letters, numbers, and hyphens.");
+    print!("Client ID: ");
     flush_stdout()?;
     let name = read_trimmed_line()?;
     if name.is_empty() {
-        bail!("Client name is required.");
+        bail!("Client ID is required.");
     }
     Ok(ConnectTarget::Other(name))
 }
@@ -196,8 +244,15 @@ fn read_trimmed_line() -> Result<String> {
     Ok(line.trim().to_string())
 }
 
-fn install_known_client(client: KnownClient, created: &CreatedClientGrant) -> Result<bool> {
-    let installer = build_installer_command(client, created);
+fn install_known_client(
+    client: KnownClient,
+    created: &CreatedClientGrant,
+    mcp_scope: Option<McpScope>,
+) -> Result<bool> {
+    let Some(cli_client) = client.cli_mcp_client() else {
+        return install_desktop_client(client, created);
+    };
+    let installer = build_installer_command(cli_client, created, mcp_scope);
     println!("Adding Driggsby to {}...", client.display_name());
     flush_stdout()?;
 
@@ -208,75 +263,97 @@ fn install_known_client(client: KnownClient, created: &CreatedClientGrant) -> Re
         Ok(output) if output.status.success() => {
             println!("{} is connected.", client.display_name());
             println!();
-            println!("Approved local client:");
+            println!("Connected MCP client:");
             println!("  {}", client.display_name());
             Ok(true)
         }
-        Ok(_) | Err(_) => {
-            println!("Automatic setup did not complete.");
-            println!();
-            print_known_client_command(&installer);
-            println!();
-            print_other_mcp_config(created);
+        Ok(_) => {
+            print_auto_setup_failure(
+                client,
+                &format!("{} mcp add returned an error.", installer.program),
+            );
+            print_one_time_mcp_config_with_secret(created);
+            Ok(false)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            print_auto_setup_failure(client, &format!("{} was not found.", installer.program));
+            print_one_time_mcp_config_with_secret(created);
+            Ok(false)
+        }
+        Err(_) => {
+            print_auto_setup_failure(client, &format!("Could not run {}.", installer.program));
+            print_one_time_mcp_config_with_secret(created);
             Ok(false)
         }
     }
 }
 
-struct InstallerCommand {
-    program: String,
-    args: Vec<String>,
-}
+fn install_desktop_client(client: KnownClient, created: &CreatedClientGrant) -> Result<bool> {
+    let Some(desktop_client) = client.desktop_mcp_client() else {
+        return Ok(false);
+    };
+    println!("Adding Driggsby to {}...", client.display_name());
+    flush_stdout()?;
 
-fn build_installer_command(client: KnownClient, created: &CreatedClientGrant) -> InstallerCommand {
-    let grant_id_env = format!("{}={}", CLIENT_GRANT_ID_ENV, created.grant.grant_id);
-    let grant_secret_env = format!("{}={}", CLIENT_GRANT_SECRET_ENV, created.secret);
-    match client {
-        KnownClient::ClaudeCode => InstallerCommand {
-            program: "claude".to_string(),
-            args: vec![
-                "mcp".to_string(),
-                "add".to_string(),
-                "-e".to_string(),
-                grant_id_env,
-                "-e".to_string(),
-                grant_secret_env,
-                "driggsby".to_string(),
-                "--".to_string(),
-                "npx".to_string(),
-                "-y".to_string(),
-                "driggsby@latest".to_string(),
-                "mcp-server".to_string(),
-            ],
-        },
-        KnownClient::Codex => InstallerCommand {
-            program: "codex".to_string(),
-            args: vec![
-                "mcp".to_string(),
-                "add".to_string(),
-                "--env".to_string(),
-                grant_id_env,
-                "--env".to_string(),
-                grant_secret_env,
-                "driggsby".to_string(),
-                "--".to_string(),
-                "npx".to_string(),
-                "-y".to_string(),
-                "driggsby@latest".to_string(),
-                "mcp-server".to_string(),
-            ],
-        },
+    match install_desktop_mcp_config(desktop_client, created) {
+        Ok(()) => {
+            println!("{} is connected.", client.display_name());
+            println!();
+            println!("Connected MCP client:");
+            println!("  {}", client.display_name());
+            Ok(true)
+        }
+        Err(error) => {
+            print_auto_setup_failure(client, &first_error_line(&error));
+            print_one_time_mcp_config_with_secret(created);
+            Ok(false)
+        }
     }
 }
 
-fn remove_known_client_configs(grants: &[crate::broker::grants::BrokerClientGrant]) {
+fn print_auto_setup_failure(client: KnownClient, reason: &str) {
+    println!("Automatic MCP config update failed.");
+    println!(
+        "Could not add Driggsby to {} automatically.",
+        client.display_name()
+    );
+    println!("Reason:");
+    println!("  {reason}");
+    println!();
+    println!("Driggsby created this client's local key, but the MCP client still needs config.");
+    println!();
+    println!("Next:");
+    println!("  Add the MCP config below manually.");
+    println!("  Or fix the client install and run:");
+    println!(
+        "    npx driggsby@latest mcp connect {}",
+        client.integration_id()
+    );
+    println!();
+}
+
+fn first_error_line(error: &anyhow::Error) -> String {
+    error
+        .to_string()
+        .lines()
+        .next()
+        .unwrap_or("Automatic setup failed.")
+        .to_string()
+}
+
+pub(super) fn remove_known_client_configs(grants: &[crate::broker::grants::BrokerClientGrant]) {
     let mut removed_claude = false;
+    let mut removed_claude_desktop = false;
     let mut removed_codex = false;
     for grant in grants {
         match grant.integration_id.as_deref() {
             Some("claude-code") if !removed_claude => {
                 remove_known_client_config(KnownClient::ClaudeCode);
                 removed_claude = true;
+            }
+            Some("claude-desktop") if !removed_claude_desktop => {
+                remove_known_client_config(KnownClient::ClaudeDesktop);
+                removed_claude_desktop = true;
             }
             Some("codex") if !removed_codex => {
                 remove_known_client_config(KnownClient::Codex);
@@ -287,8 +364,32 @@ fn remove_known_client_configs(grants: &[crate::broker::grants::BrokerClientGran
     }
 }
 
+pub(super) fn remove_all_known_client_configs() {
+    remove_known_client_config(KnownClient::ClaudeCode);
+    remove_known_client_config(KnownClient::ClaudeDesktop);
+    remove_known_client_config(KnownClient::Codex);
+}
+
 fn remove_known_client_config(client: KnownClient) {
-    let remover = build_remover_command(client);
+    if let Some(desktop_client) = client.desktop_mcp_client() {
+        match remove_desktop_mcp_config(desktop_client) {
+            Ok(true) => println!("Removed Driggsby from {}.", client.display_name()),
+            Ok(false) => println!("No Driggsby MCP config found in {}.", client.display_name()),
+            Err(_) => {
+                println!(
+                    "Could not remove Driggsby from {} automatically.",
+                    client.display_name()
+                );
+                println!("Remove Driggsby from that client's MCP settings.");
+            }
+        }
+        return;
+    }
+
+    let Some(cli_client) = client.cli_mcp_client() else {
+        return;
+    };
+    let remover = build_remover_command(cli_client);
     let output = Command::new(&remover.program).args(&remover.args).output();
     match output {
         Ok(output) if output.status.success() => {
@@ -305,69 +406,53 @@ fn remove_known_client_config(client: KnownClient) {
     }
 }
 
-fn build_remover_command(client: KnownClient) -> InstallerCommand {
-    match client {
-        KnownClient::ClaudeCode => InstallerCommand {
-            program: "claude".to_string(),
-            args: vec![
-                "mcp".to_string(),
-                "remove".to_string(),
-                "driggsby".to_string(),
-            ],
-        },
-        KnownClient::Codex => InstallerCommand {
-            program: "codex".to_string(),
-            args: vec![
-                "mcp".to_string(),
-                "remove".to_string(),
-                "driggsby".to_string(),
-            ],
-        },
-    }
-}
-
-fn print_known_client_command(installer: &InstallerCommand) {
-    println!("Run this command to finish setup:");
-    println!("  {}", render_shell_command(installer));
-}
-
-fn print_other_mcp_config(created: &CreatedClientGrant) {
+fn print_one_time_mcp_config_with_secret(created: &CreatedClientGrant) {
+    // Intentional one-time API-key style credential display for manual MCP setup.
     println!("Add this MCP server to your client:");
     println!();
     println!("Command:");
-    println!("  npx");
-    println!();
-    println!("Arguments:");
-    println!("  -y");
-    println!("  driggsby@latest");
-    println!("  mcp-server");
+    println!("  npx -y driggsby@latest mcp-server");
     println!();
     println!("Environment:");
-    println!("  {}={}", CLIENT_GRANT_ID_ENV, created.grant.grant_id);
-    println!("  {}={}", CLIENT_GRANT_SECRET_ENV, created.secret);
+    println!("  {}={}", CLIENT_KEY_ENV, created.client_key);
+    print_secret_notice();
+    println!("This client key is active until you disconnect it.");
     println!();
-    println!("Revoke this client with:");
+    println!("Disconnect this client with:");
     println!(
-        "  npx driggsby@latest clients revoke {}",
-        created.grant.grant_id
+        "  npx driggsby@latest mcp clients disconnect {}",
+        client_id_for_grant(&created.grant)
     );
+}
+
+fn print_secret_notice() {
+    println!();
+    println!("Treat DRIGGSBY_CLIENT_KEY like an API key.");
+    println!("It is shown once and cannot be viewed again.");
 }
 
 fn print_client_grants(secret_store: &dyn SecretStore, broker_id: &str) -> Result<()> {
     let grants = list_client_grants(secret_store, broker_id)?;
     if grants.is_empty() {
-        println!("No approved clients.");
+        println!("No connected MCP clients.");
         return Ok(());
     }
-    println!("Approved clients:");
+    println!("Connected MCP clients:");
     for grant in grants {
-        let last_used = grant.last_used_at.as_deref().unwrap_or("never");
-        println!(
-            "  {}  {}  last used {}",
-            grant.display_name, grant.grant_id, last_used
-        );
+        println!("  {}", client_id_for_grant(&grant));
     }
     Ok(())
+}
+
+fn client_id_for_grant(grant: &BrokerClientGrant) -> &str {
+    grant
+        .integration_id
+        .as_deref()
+        .unwrap_or(grant.display_name.as_str())
+}
+
+fn is_known_client_id(client_id: &str) -> bool {
+    KnownClient::from_client_id(client_id).is_some()
 }
 
 fn print_manual_sign_in_url(sign_in_url: &str) -> Result<()> {
@@ -378,78 +463,10 @@ fn print_manual_sign_in_url(sign_in_url: &str) -> Result<()> {
     flush_stdout()
 }
 
-fn render_shell_command(installer: &InstallerCommand) -> String {
-    std::iter::once(installer.program.as_str())
-        .chain(installer.args.iter().map(String::as_str))
-        .map(shell_quote)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn shell_quote(value: &str) -> String {
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || "-_./:@=".contains(ch))
-    {
-        return value.to_string();
-    }
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
 fn flush_stdout() -> Result<()> {
     io::stdout().flush()?;
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{ConnectTarget, KnownClient, build_installer_command, parse_connect_target};
-
-    #[test]
-    fn parses_known_and_other_connect_targets() {
-        assert_eq!(
-            parse_connect_target("claude code"),
-            ConnectTarget::Known(KnownClient::ClaudeCode)
-        );
-        assert_eq!(
-            parse_connect_target("codex"),
-            ConnectTarget::Known(KnownClient::Codex)
-        );
-        assert_eq!(
-            parse_connect_target("Raycast"),
-            ConnectTarget::Other("Raycast".to_string())
-        );
-    }
-
-    #[test]
-    fn installer_commands_include_grant_environment() {
-        let created = crate::broker::grants::CreatedClientGrant {
-            grant: crate::broker::grants::BrokerClientGrant {
-                schema_version: 1,
-                grant_id: "lc_id".to_string(),
-                display_name: "Codex".to_string(),
-                integration_id: Some("codex".to_string()),
-                secret_sha256: "hash".to_string(),
-                created_at: "2026-04-13T00:00:00Z".to_string(),
-                last_used_at: None,
-                revoked_at: None,
-            },
-            secret: "ls_secret".to_string(),
-        };
-
-        let command = build_installer_command(KnownClient::Codex, &created);
-
-        assert_eq!(command.program, "codex");
-        assert!(command.args.contains(&"--env".to_string()));
-        assert!(
-            command
-                .args
-                .contains(&"DRIGGSBY_CLIENT_GRANT_ID=lc_id".to_string())
-        );
-        assert!(
-            command
-                .args
-                .contains(&"DRIGGSBY_CLIENT_GRANT_SECRET=ls_secret".to_string())
-        );
-    }
-}
+mod tests;

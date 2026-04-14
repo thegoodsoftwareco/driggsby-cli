@@ -142,8 +142,7 @@ async fn send_broker_request(
     let request = BrokerRequest {
         auth_token,
         challenge: uuid::Uuid::now_v7().to_string(),
-        client_grant_id: client_credentials.map(|value| value.grant_id.clone()),
-        client_grant_secret: client_credentials.map(|value| value.secret.clone()),
+        client_key: client_credentials.map(|value| value.client_key.clone()),
         id: uuid::Uuid::now_v7().to_string(),
         method: method.to_string(),
         tool_name,

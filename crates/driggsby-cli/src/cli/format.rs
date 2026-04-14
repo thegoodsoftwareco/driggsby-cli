@@ -1,6 +1,6 @@
 use crate::{
     broker::types::{BrokerRemoteAccessState, BrokerStatus},
-    user_guidance::{DRIGGSBY_CONNECT_COMMAND, DRIGGSBY_LOGIN_COMMAND},
+    user_guidance::DRIGGSBY_CONNECT_COMMAND,
 };
 
 pub fn format_status_text(status: &BrokerStatus) -> String {
@@ -147,7 +147,7 @@ fn resolve_recovery_command(
 ) -> Option<String> {
     match remote_access_state {
         BrokerRemoteAccessState::NotConnected | BrokerRemoteAccessState::ReauthRequired => {
-            Some(DRIGGSBY_LOGIN_COMMAND.to_string())
+            Some(DRIGGSBY_CONNECT_COMMAND.to_string())
         }
         BrokerRemoteAccessState::Ready | BrokerRemoteAccessState::TemporarilyUnavailable => None,
     }
@@ -168,7 +168,7 @@ mod tests {
             session::BrokerRemoteSessionSummary,
             types::{BrokerRemoteAccessState, BrokerStatus},
         },
-        user_guidance::DRIGGSBY_LOGIN_COMMAND,
+        user_guidance::DRIGGSBY_CONNECT_COMMAND,
     };
 
     fn ready_session() -> BrokerRemoteSessionSummary {
@@ -202,14 +202,14 @@ mod tests {
         assert!(text.starts_with("Ready\n"));
         assert!(text.contains("Session: connected"));
         assert!(text.contains("Local auth broker: waiting for client launch"));
-        assert!(text.contains("Connect an MCP client with:\n  npx driggsby@latest connect"));
+        assert!(text.contains("Connect an MCP client with:\n  npx driggsby@latest mcp connect"));
         assert!(!text.contains("Driggsby CLI"));
         assert!(!text.contains("Access token expires"));
         assert!(!text.contains("This is normal."));
     }
 
     #[test]
-    fn disconnected_status_points_to_login() {
+    fn disconnected_status_points_to_connect() {
         let text = format_status_text(&BrokerStatus {
             installed: false,
             broker_running: false,
@@ -218,14 +218,14 @@ mod tests {
             remote_mcp_ready: false,
             remote_access_detail: None,
             remote_access_state: Some(BrokerRemoteAccessState::NotConnected),
-            next_step_command: Some(DRIGGSBY_LOGIN_COMMAND.to_string()),
+            next_step_command: Some(DRIGGSBY_CONNECT_COMMAND.to_string()),
             remote_session: None,
             socket_path: "/tmp/cli.sock".to_string(),
         });
 
         assert!(text.starts_with("Not connected\n"));
         assert!(text.contains("Sign in is required before this CLI can serve MCP requests."));
-        assert!(text.contains("Next:\n  npx driggsby@latest login"));
+        assert!(text.contains("Next:\n  npx driggsby@latest mcp connect"));
         assert!(!text.contains('`'));
         assert!(!text.contains("Session:"));
         assert!(!text.contains("Local auth broker:"));

@@ -10,8 +10,6 @@ use super::{
 };
 
 const KEYRING_UNAVAILABLE_WITH_EXISTING_INSTALL_MESSAGE: &str = "This Driggsby CLI install already depends on platform secure storage, but that storage is unavailable in this shell. Reopen the original desktop session or restore keyring access before using this install.";
-const LOGOUT_FALLBACK_NOTICE: &str = "Platform secure storage is unavailable here, so logout will clear local CLI files only. Any unreachable platform-keyring entries will remain until you return to the original session.";
-
 pub struct ResolvedSecretStore {
     pub backend: &'static str,
     pub notice: Option<String>,
@@ -97,16 +95,14 @@ fn fallback_notice(runtime_paths: &RuntimePaths) -> String {
     )
 }
 
-pub fn resolve_secret_store_for_logout(
+pub fn resolve_secret_store_for_disconnect_all(
     runtime_paths: &RuntimePaths,
 ) -> Result<ResolvedSecretStore> {
     match resolve_secret_store(runtime_paths) {
         Ok(store) => Ok(store),
-        Err(_) => Ok(ResolvedSecretStore {
-            backend: "file",
-            notice: Some(LOGOUT_FALLBACK_NOTICE.to_string()),
-            store: Box::new(FileSecretStore::new(runtime_paths)),
-        }),
+        Err(_) => bail!(
+            "Driggsby could not access secure storage from this shell, so stored session data and connected MCP clients were not cleared.\n\nNext:\n  Run this command from your normal desktop terminal:\n    npx driggsby@latest mcp clients disconnect-all"
+        ),
     }
 }
 

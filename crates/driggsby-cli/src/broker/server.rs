@@ -176,12 +176,8 @@ impl LocalBrokerServer {
 
     fn verify_client_grant(&self, request: &BrokerRequest) -> Result<()> {
         let credentials = ClientGrantCredentials {
-            grant_id: request
-                .client_grant_id
-                .clone()
-                .ok_or_else(missing_client_grant_error)?,
-            secret: request
-                .client_grant_secret
+            client_key: request
+                .client_key
                 .clone()
                 .ok_or_else(missing_client_grant_error)?,
         };

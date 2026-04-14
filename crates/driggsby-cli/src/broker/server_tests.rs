@@ -113,8 +113,7 @@ async fn local_broker_handles_parallel_forwarded_calls() -> Result<()> {
         Some("codex"),
     )?;
     let credentials = super::grants::ClientGrantCredentials {
-        grant_id: grant.grant.grant_id,
-        secret: grant.secret,
+        client_key: grant.client_key,
     };
 
     let Some(auth_token) =

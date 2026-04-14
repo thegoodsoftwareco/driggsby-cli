@@ -7,7 +7,7 @@ use crate::{
     },
     runtime_paths::RuntimePaths,
     user_guidance::{
-        DRIGGSBY_LOGIN_COMMAND, DRIGGSBY_STATUS_COMMAND, build_reauthentication_required_message,
+        DRIGGSBY_CONNECT_COMMAND, DRIGGSBY_STATUS_COMMAND, build_reauthentication_required_message,
     },
 };
 
@@ -115,7 +115,7 @@ pub async fn inspect_remote_session_readiness(
         return Ok(BrokerRemoteSessionReadiness {
             connected: false,
             detail: "The CLI does not have a saved session yet.".to_string(),
-            next_step_command: Some(DRIGGSBY_LOGIN_COMMAND.to_string()),
+            next_step_command: Some(DRIGGSBY_CONNECT_COMMAND.to_string()),
             ready: false,
             reauthentication_required: false,
             session: None,
@@ -139,11 +139,11 @@ pub async fn inspect_remote_session_readiness(
             }
             Err(error) => {
                 let message = error.to_string();
-                if message.contains(DRIGGSBY_LOGIN_COMMAND) {
+                if message.contains(DRIGGSBY_CONNECT_COMMAND) {
                     return Ok(BrokerRemoteSessionReadiness {
                         connected: true,
                         detail: "The saved CLI session is no longer authorized. Remote MCP access will stay blocked until Driggsby signs in again.".to_string(),
-                        next_step_command: Some(DRIGGSBY_LOGIN_COMMAND.to_string()),
+                        next_step_command: Some(DRIGGSBY_CONNECT_COMMAND.to_string()),
                         ready: false,
                         reauthentication_required: true,
                         session: Some(summarize_broker_remote_session(&session)),

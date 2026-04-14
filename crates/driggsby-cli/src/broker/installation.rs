@@ -4,6 +4,7 @@ use crate::{
     auth::dpop::generate_dpop_key_material,
     json_file::{read_json_file, remove_file_if_present, write_json_file},
     runtime_paths::RuntimePaths,
+    user_guidance::DRIGGSBY_CONNECT_COMMAND,
 };
 use anyhow::Result;
 use rand::Rng;
@@ -240,7 +241,7 @@ fn build_display_status_from_local_state(
                 false,
                 BrokerRemoteAccessState::NotConnected,
                 "The CLI does not have a saved session yet.".to_string(),
-                Some("npx driggsby@latest login".to_string()),
+                Some(DRIGGSBY_CONNECT_COMMAND.to_string()),
             ),
             Some(session) if session_has_comfortable_headroom(session.access_token_expires_at.as_str()) => (
                 true,
@@ -252,7 +253,7 @@ fn build_display_status_from_local_state(
                 false,
                 BrokerRemoteAccessState::TemporarilyUnavailable,
                 "The CLI has a saved session. The next MCP launch will refresh it automatically before forwarding runs.".to_string(),
-                Some("npx driggsby@latest connect".to_string()),
+                Some(DRIGGSBY_CONNECT_COMMAND.to_string()),
             ),
         };
 
@@ -414,7 +415,7 @@ mod tests {
         );
         assert_eq!(
             status.next_step_command.as_deref(),
-            Some("npx driggsby@latest login")
+            Some("npx driggsby@latest mcp connect")
         );
         assert!(status.remote_session.is_none());
         Ok(())
@@ -449,7 +450,7 @@ mod tests {
 
         assert!(message.is_some_and(|value| {
             value.contains("local CLI auth state is incomplete")
-                && value.contains("npx driggsby@latest login")
+                && value.contains("npx driggsby@latest mcp connect")
                 && !value.contains("expected")
         }));
         Ok(())
@@ -468,7 +469,13 @@ mod tests {
                 created_at: "2026-04-10T02:15:54Z".to_string(),
                 dpop: BrokerDpopMetadata {
                     algorithm: "ES256".to_string(),
-                    public_jwk: test_public_jwk(),
+                    public_jwk: Jwk {
+                        kty: "EC".to_string(),
+                        crv: "P-256".to_string(),
+                        x: "x".to_string(),
+                        y: "y".to_string(),
+                        d: None,
+                    },
                     thumbprint: "test-thumbprint".to_string(),
                 },
             },
@@ -485,16 +492,6 @@ mod tests {
             lock_path: state_dir.join("cli.lock"),
             config_dir,
             state_dir,
-        }
-    }
-
-    fn test_public_jwk() -> Jwk {
-        Jwk {
-            kty: "EC".to_string(),
-            crv: "P-256".to_string(),
-            x: "x".to_string(),
-            y: "y".to_string(),
-            d: None,
         }
     }
 }
