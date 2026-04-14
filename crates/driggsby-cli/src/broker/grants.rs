@@ -152,13 +152,13 @@ pub fn verify_client_grant(
 
 pub fn missing_client_grant_error() -> PublicBrokerError {
     PublicBrokerError::new(
-        "This MCP client is not connected to Driggsby yet.\n\nNext:\n  npx driggsby@latest mcp connect",
+        "Client not connected to Driggsby.\n\nNext:\n  npx driggsby@latest mcp connect",
     )
 }
 
 fn not_connected_error() -> PublicBrokerError {
     PublicBrokerError::new(
-        "This MCP client is not connected to Driggsby, or it was disconnected.\n\nNext:\n  npx driggsby@latest mcp connect",
+        "Client not connected or was disconnected.\n\nNext:\n  npx driggsby@latest mcp connect",
     )
 }
 

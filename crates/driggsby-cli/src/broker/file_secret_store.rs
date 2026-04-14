@@ -19,16 +19,16 @@ use super::secret_store::SecretStore;
 
 const FILE_SECRET_KEY_BYTES: usize = 32;
 const FILE_SECRET_STORE_INCOMPLETE_MESSAGE: &str = "\
-The local Driggsby file-backed secret store is incomplete.
+Driggsby local secret store is incomplete.
 
 Next:
-  npx driggsby@latest mcp clients disconnect-all
+  npx driggsby@latest mcp disconnect-all
   npx driggsby@latest mcp connect";
 const FILE_SECRET_STORE_INVALID_MESSAGE: &str = "\
-The local Driggsby file-backed secret store is invalid.
+Driggsby local secret store is invalid.
 
 Next:
-  npx driggsby@latest mcp clients disconnect-all
+  npx driggsby@latest mcp disconnect-all
   npx driggsby@latest mcp connect";
 const FILE_SECRET_STORE_SCHEMA_VERSION: u8 = 1;
 

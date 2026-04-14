@@ -9,7 +9,7 @@ use super::{
     secret_store::SecretStore,
 };
 
-const KEYRING_UNAVAILABLE_WITH_EXISTING_INSTALL_MESSAGE: &str = "This Driggsby CLI install already depends on platform secure storage, but that storage is unavailable in this shell. Reopen the original desktop session or restore keyring access before using this install.";
+const KEYRING_UNAVAILABLE_WITH_EXISTING_INSTALL_MESSAGE: &str = "This install uses platform secure storage, which isn't available in this shell. Reopen your desktop session or restore keyring access.";
 pub struct ResolvedSecretStore {
     pub backend: &'static str,
     pub notice: Option<String>,
@@ -90,7 +90,7 @@ fn resolve_secret_store_without_file_secrets(
 
 fn fallback_notice(runtime_paths: &RuntimePaths) -> String {
     format!(
-        "Platform secure storage is unavailable here. Driggsby will use an owner-only file-backed secret store under {}.",
+        "Platform secure storage unavailable. Using local file store under {}.",
         runtime_paths.config_dir.display()
     )
 }
@@ -101,7 +101,7 @@ pub fn resolve_secret_store_for_disconnect_all(
     match resolve_secret_store(runtime_paths) {
         Ok(store) => Ok(store),
         Err(_) => bail!(
-            "Driggsby could not access secure storage from this shell, so stored session data and connected MCP clients were not cleared.\n\nNext:\n  Run this command from your normal desktop terminal:\n    npx driggsby@latest mcp clients disconnect-all"
+            "Can't access secure storage from this shell.\n\nNext:\n  Run from a desktop terminal:\n    npx driggsby@latest mcp disconnect-all"
         ),
     }
 }
@@ -175,7 +175,7 @@ mod tests {
             resolved
                 .notice
                 .as_deref()
-                .is_some_and(|notice| notice.contains("Platform secure storage is unavailable"))
+                .is_some_and(|notice| notice.contains("Platform secure storage unavailable"))
         );
         Ok(())
     }
@@ -195,8 +195,8 @@ mod tests {
         .map(|error| error.to_string());
 
         assert!(error.is_some_and(|message| {
-            message.contains("already depends on platform secure storage")
-                && message.contains("unavailable in this shell")
+            message.contains("platform secure storage")
+                && message.contains("available in this shell")
         }));
         Ok(())
     }

@@ -7,7 +7,7 @@
 ```bash
 npx driggsby@latest mcp connect
 npx driggsby@latest status
-npx driggsby@latest mcp clients list
+npx driggsby@latest mcp list
 ```
 
 Run `mcp connect` once for each MCP client you want to use. Driggsby opens

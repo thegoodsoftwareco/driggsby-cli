@@ -9,38 +9,22 @@ pub fn format_status_text(status: &BrokerStatus) -> String {
     let explanation = resolve_explanation(status, &remote_access_state);
     let configuration_command = resolve_configuration_command(status, &remote_access_state);
     let recovery_command = resolve_recovery_command(status, &remote_access_state);
-    let details = resolve_details(status, &remote_access_state);
 
-    let mut lines = vec![heading.to_string(), String::new()];
-
-    for detail in &details {
-        lines.push(detail.clone());
-    }
-
-    if !details.is_empty() && explanation.is_some() {
-        lines.push(String::new());
-    }
-
-    let mut has_body = false;
+    let mut lines = vec![heading.to_string()];
 
     if let Some(explanation) = explanation {
+        lines.push(String::new());
         lines.push(explanation);
-        has_body = true;
     }
 
     if let Some(command) = configuration_command {
-        if has_body || !details.is_empty() {
-            lines.push(String::new());
-        }
-        lines.push("Connect an MCP client with:".to_string());
+        lines.push(String::new());
+        lines.push("Connect an MCP client:".to_string());
         lines.push(format!("  {command}"));
-        has_body = true;
     }
 
     if let Some(command) = recovery_command {
-        if has_body || !details.is_empty() {
-            lines.push(String::new());
-        }
+        lines.push(String::new());
         lines.push("Next:".to_string());
         lines.push(format!("  {command}"));
     }
@@ -65,63 +49,16 @@ fn resolve_heading(
     }
 }
 
-fn resolve_details(
-    status: &BrokerStatus,
-    remote_access_state: &BrokerRemoteAccessState,
-) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    if !matches!(remote_access_state, BrokerRemoteAccessState::NotConnected) {
-        lines.push(format!(
-            "Session: {}",
-            match remote_access_state {
-                BrokerRemoteAccessState::Ready => "connected",
-                BrokerRemoteAccessState::NotConnected => "not connected",
-                BrokerRemoteAccessState::ReauthRequired => "reconnect required",
-                BrokerRemoteAccessState::TemporarilyUnavailable => "refresh needed",
-            }
-        ));
-    }
-
-    if status.installed {
-        lines.push(format!(
-            "Local auth broker: {}",
-            match remote_access_state {
-                BrokerRemoteAccessState::Ready if status.broker_running => "running",
-                BrokerRemoteAccessState::Ready => "waiting for client launch",
-                _ if status.broker_running => "running",
-                _ => "not running",
-            }
-        ));
-    }
-
-    lines
-}
-
 fn resolve_explanation(
-    status: &BrokerStatus,
+    _status: &BrokerStatus,
     remote_access_state: &BrokerRemoteAccessState,
 ) -> Option<String> {
     match remote_access_state {
-        BrokerRemoteAccessState::Ready if status.broker_running => {
-            Some("This CLI is ready to serve MCP requests.".to_string())
-        }
         BrokerRemoteAccessState::Ready => None,
-        BrokerRemoteAccessState::NotConnected => Some(
-            "Sign in is required before this CLI can serve MCP requests.".to_string(),
-        ),
-        BrokerRemoteAccessState::ReauthRequired => Some(
-            "The saved session is no longer valid, so this CLI cannot serve MCP requests yet."
-                .to_string(),
-        ),
-        BrokerRemoteAccessState::TemporarilyUnavailable if status.remote_session.is_some() => {
-            Some(
-                "The saved session will be refreshed automatically the next time the MCP server starts."
-                    .to_string(),
-            )
-        }
+        BrokerRemoteAccessState::NotConnected => Some("Sign in to connect Driggsby.".to_string()),
+        BrokerRemoteAccessState::ReauthRequired => Some("Driggsby session expired.".to_string()),
         BrokerRemoteAccessState::TemporarilyUnavailable => {
-            Some("This CLI is not ready to serve MCP requests yet.".to_string())
+            Some("Driggsby will reconnect automatically on next use.".to_string())
         }
     }
 }
@@ -200,12 +137,11 @@ mod tests {
         });
 
         assert!(text.starts_with("Ready\n"));
-        assert!(text.contains("Session: connected"));
-        assert!(text.contains("Local auth broker: waiting for client launch"));
-        assert!(text.contains("Connect an MCP client with:\n  npx driggsby@latest mcp connect"));
+        assert!(text.contains("Connect an MCP client:\n  npx driggsby@latest mcp connect"));
+        assert!(!text.contains("Session:"));
+        assert!(!text.contains("Local auth broker:"));
         assert!(!text.contains("Driggsby CLI"));
-        assert!(!text.contains("Access token expires"));
-        assert!(!text.contains("This is normal."));
+        assert!(!text.contains('`'));
     }
 
     #[test]
@@ -224,7 +160,7 @@ mod tests {
         });
 
         assert!(text.starts_with("Not connected\n"));
-        assert!(text.contains("Sign in is required before this CLI can serve MCP requests."));
+        assert!(text.contains("Sign in to connect Driggsby."));
         assert!(text.contains("Next:\n  npx driggsby@latest mcp connect"));
         assert!(!text.contains('`'));
         assert!(!text.contains("Session:"));
@@ -232,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    fn running_status_drops_next_step() {
+    fn running_status_is_clean() {
         let text = format_status_text(&BrokerStatus {
             installed: true,
             broker_running: true,
@@ -246,8 +182,9 @@ mod tests {
             socket_path: "/tmp/cli.sock".to_string(),
         });
 
-        assert!(text.contains("Local auth broker: running"));
-        assert!(text.contains("This CLI is ready to serve MCP requests."));
+        assert!(text.starts_with("Ready\n"));
+        assert!(!text.contains("Session:"));
+        assert!(!text.contains("Local auth broker:"));
         assert!(!text.contains("Next:"));
     }
 }

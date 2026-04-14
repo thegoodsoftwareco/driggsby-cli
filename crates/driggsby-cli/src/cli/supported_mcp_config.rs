@@ -59,15 +59,28 @@ pub(super) fn build_installer_command(
 }
 
 pub(super) fn build_remover_command(client: CliMcpClient) -> McpConfigCommand {
+    build_scoped_remover_command(client, None)
+}
+
+pub(super) fn build_scoped_remover_command(
+    client: CliMcpClient,
+    scope: Option<McpScope>,
+) -> McpConfigCommand {
     match client {
-        CliMcpClient::ClaudeCode => McpConfigCommand {
-            program: "claude".to_string(),
-            args: vec![
+        CliMcpClient::ClaudeCode => {
+            let mut args = vec![
                 "mcp".to_string(),
                 "remove".to_string(),
                 "driggsby".to_string(),
-            ],
-        },
+            ];
+            if let Some(scope) = scope {
+                args.extend(["-s".to_string(), scope.as_cli_value().to_string()]);
+            }
+            McpConfigCommand {
+                program: "claude".to_string(),
+                args,
+            }
+        }
         CliMcpClient::Codex => McpConfigCommand {
             program: "codex".to_string(),
             args: vec![

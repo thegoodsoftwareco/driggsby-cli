@@ -179,7 +179,7 @@ async fn send_broker_request(
         return Err(PublicBrokerError::new(
             response
                 .error
-                .unwrap_or_else(|| "Driggsby could not complete that request.".to_string()),
+                .unwrap_or_else(|| "Request failed.".to_string()),
         )
         .into());
     }

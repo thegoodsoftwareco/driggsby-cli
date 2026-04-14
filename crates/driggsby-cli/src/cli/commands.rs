@@ -10,7 +10,7 @@ use crate::{
         local_lock::LocalStateLock,
         resolve_secret_store::resolve_secret_store_for_disconnect_all,
     },
-    cli::{connect::remove_all_known_client_configs, format::format_status_text},
+    cli::{client_config_cleanup::remove_all_known_client_configs, format::format_status_text},
     runtime_paths::{RuntimePaths, ensure_runtime_directories},
 };
 
@@ -21,7 +21,7 @@ fn flush_stdout() -> Result<()> {
 
 pub async fn run_disconnect_all_command(runtime_paths: &RuntimePaths) -> Result<()> {
     ensure_runtime_directories(runtime_paths)?;
-    println!("Disconnecting Driggsby from this device...");
+    println!("Disconnecting Driggsby...");
     flush_stdout()?;
 
     let clear_result = {
@@ -35,29 +35,20 @@ pub async fn run_disconnect_all_command(runtime_paths: &RuntimePaths) -> Result<
         }
     };
     println!();
-    println!("Removing supported MCP configs...");
+    println!("MCP config cleanup:");
     remove_all_known_client_configs();
 
     if let Err(error) = clear_result {
         println!();
-        println!("Supported MCP config cleanup was attempted.");
         bail!("{error}");
     }
 
     println!();
-    println!("Local Driggsby data was cleared.");
+    println!("Driggsby disconnected.");
     println!();
-    println!("Cleared local Driggsby data:");
-    println!("  account session");
-    println!("  broker identity");
-    println!("  connected MCP clients");
+    println!("Other clients may still have Driggsby configured. Remove manually.");
     println!();
-    println!("Other MCP clients:");
-    println!(
-        "  Remove Driggsby manually from any MCP client outside Claude Code, Claude Desktop, and Codex."
-    );
-    println!();
-    println!("Reconnect later with:");
+    println!("Reconnect:");
     println!("  npx driggsby@latest mcp connect");
     Ok(())
 }

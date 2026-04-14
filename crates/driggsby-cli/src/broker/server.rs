@@ -186,7 +186,11 @@ impl LocalBrokerServer {
 
     fn remote_session_summary(&self) -> Result<super::session::BrokerRemoteSessionSummary> {
         Ok(read_broker_remote_session_snapshot(&self.runtime_paths)?
-            .ok_or_else(|| PublicBrokerError::new("The Driggsby CLI is not connected."))?
+            .ok_or_else(|| {
+                PublicBrokerError::new(
+                    "Driggsby is not connected.\n\nNext:\n  npx driggsby@latest mcp connect",
+                )
+            })?
             .session)
     }
 
@@ -196,7 +200,11 @@ impl LocalBrokerServer {
     ) -> Result<super::secrets::BrokerRemoteSessionSecrets> {
         let secrets =
             read_broker_remote_session_secrets(self.secret_store.as_ref(), &self.broker_id)?
-                .ok_or_else(|| PublicBrokerError::new("The Driggsby CLI is not connected."))?;
+                .ok_or_else(|| {
+                    PublicBrokerError::new(
+                        "Driggsby is not connected.\n\nNext:\n  npx driggsby@latest mcp connect",
+                    )
+                })?;
         verify_broker_remote_session_binding(summary, &secrets)?;
         Ok(secrets)
     }
@@ -207,5 +215,5 @@ fn public_broker_error_message(error: &anyhow::Error) -> String {
         return public_error.message().to_string();
     }
 
-    "Driggsby could not complete that request. Check the input and try again.\n\nNext:\n  npx driggsby@latest status".to_string()
+    "Request failed. Verify tool name and arguments, then retry.".to_string()
 }

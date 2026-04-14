@@ -5,8 +5,10 @@ use anyhow::Result;
 use crate::{
     auth::login::login_broker,
     broker::{
-        installation::read_broker_metadata, remote_session::ensure_fresh_remote_session,
-        secret_store::SecretStore, secrets::read_broker_remote_session,
+        installation::read_broker_metadata,
+        remote_session::{ensure_fresh_remote_session, session_needs_refresh},
+        secret_store::SecretStore,
+        secrets::read_broker_remote_session,
     },
     runtime_paths::RuntimePaths,
     user_guidance::DRIGGSBY_CONNECT_COMMAND,
@@ -22,7 +24,7 @@ pub(super) async fn ensure_recent_cli_session(
         return Ok(broker_id);
     }
 
-    println!("Opening Driggsby sign-in for this CLI session...");
+    println!("Opening Driggsby sign-in...");
     flush_stdout()?;
     let login = login_broker(runtime_paths, secret_store, print_manual_sign_in_url).await?;
     Ok(login.broker_id)
@@ -36,12 +38,18 @@ async fn try_recent_cli_session(
         return Ok(None);
     };
     match read_broker_remote_session(runtime_paths, secret_store, &metadata.broker_id) {
+        Ok(Some(session))
+            if session_is_recent(&session.authenticated_at) && !session_needs_refresh(&session) =>
+        {
+            println!("Using saved Driggsby session.");
+            return Ok(Some(metadata.broker_id));
+        }
         Ok(Some(session)) if session_is_recent(&session.authenticated_at) => {}
         Ok(_) | Err(_) => return Ok(None),
     }
     match ensure_fresh_remote_session(runtime_paths, secret_store, &metadata.broker_id).await {
         Ok(_) => {
-            println!("Using your saved Driggsby CLI session.");
+            println!("Using saved Driggsby session.");
             Ok(Some(metadata.broker_id))
         }
         Err(error) if error.to_string().contains(DRIGGSBY_CONNECT_COMMAND) => Ok(None),
@@ -61,8 +69,7 @@ fn session_is_recent(authenticated_at: &str) -> bool {
 }
 
 fn print_manual_sign_in_url(sign_in_url: &str) -> Result<()> {
-    println!("Your browser did not open automatically.");
-    println!("Open this URL to finish connecting Driggsby:");
+    println!("Browser didn't open. Sign in here:");
     println!("{sign_in_url}");
     println!();
     flush_stdout()

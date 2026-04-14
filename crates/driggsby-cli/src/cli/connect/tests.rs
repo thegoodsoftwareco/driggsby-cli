@@ -30,13 +30,14 @@ fn rejects_invalid_client_ids() {
 
 #[test]
 fn parses_disconnect_client_selector_like_connect_client_id() -> anyhow::Result<()> {
-    assert_eq!(super::parse_client_selector("Raycast")?, "raycast");
-    assert_eq!(super::parse_client_selector("codex")?, "codex");
+    assert_eq!(super::parse_client_selector(Some("Raycast"))?, "raycast");
+    assert_eq!(super::parse_client_selector(Some("codex"))?, "codex");
     assert_eq!(
-        super::parse_client_selector("claude-desktop")?,
+        super::parse_client_selector(Some("claude-desktop"))?,
         "claude-desktop"
     );
-    assert!(super::parse_client_selector("raycast client").is_err());
+    assert!(super::parse_client_selector(Some("raycast client")).is_err());
+    assert!(super::parse_client_selector(None).is_err());
     Ok(())
 }
 

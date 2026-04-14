@@ -66,7 +66,7 @@ pub async fn register_broker_client(
         .send()
         .await?;
     if !response.status().is_success() {
-        bail!("Driggsby sign-in could not register the local CLI with the remote service.");
+        bail!("Driggsby sign-in failed: couldn't register with the remote service.");
     }
     let parsed: RegistrationResponse = response.json().await?;
     Ok(OAuthClientRegistration {
@@ -121,7 +121,7 @@ pub async fn exchange_authorization_code(
         .send()
         .await?;
     if !response.status().is_success() {
-        bail!("Driggsby sign-in could not exchange the authorization code for tokens.");
+        bail!("Driggsby sign-in failed: couldn't exchange the authorization code.");
     }
     parse_token_response(response.json().await?, true)
 }
@@ -161,13 +161,9 @@ pub async fn refresh_access_token(
                 .iter()
                 .any(|needle| body.contains(needle)))
         {
-            bail!(
-                "Authentication has expired or the saved CLI session is no longer valid.\n\nNext:\n  npx driggsby@latest mcp connect"
-            );
+            bail!("Driggsby session expired.\n\nNext:\n  npx driggsby@latest mcp connect");
         }
-        bail!(
-            "Driggsby could not refresh the CLI session with the remote service. Wait a moment and try again."
-        );
+        bail!("Can't reach Driggsby right now. Try again in a moment.");
     }
     parse_token_response(response.json().await?, false)
 }
