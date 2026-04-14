@@ -121,7 +121,7 @@ When implementing a feature, fix, or release change:
 You are a READ-ONLY reviewer. Do NOT edit files, do NOT create pull requests, do NOT perform the work of a developer. You are a CODE REVIEWER only.
 ```
 
-   - Reviewers must be read-only and must not create branches, commits, pushes,
+   - Reviewer subagents must be spawned with `fork_context=false`, must be read-only, and must not create branches, commits, pushes,
      pull requests, PR comments, issue comments, labels, or reactions.
    - Fix valid `medium+` findings.
    - Documentation-only edits may skip the full reviewer pass when they do not

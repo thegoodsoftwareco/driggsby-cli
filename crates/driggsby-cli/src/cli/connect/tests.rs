@@ -29,6 +29,23 @@ fn rejects_invalid_client_ids() {
 }
 
 #[test]
+fn parses_disconnect_client_selector_like_connect_client_id() -> anyhow::Result<()> {
+    assert_eq!(super::parse_client_selector("Raycast")?, "raycast");
+    assert_eq!(super::parse_client_selector("codex")?, "codex");
+    assert!(super::parse_client_selector("raycast client").is_err());
+    Ok(())
+}
+
+#[test]
+fn known_client_labels_are_human_and_other_labels_are_canonical_ids() {
+    assert_eq!(
+        parse_connect_target("claude-code").display_name(),
+        "Claude Code"
+    );
+    assert_eq!(parse_connect_target("Raycast").display_name(), "raycast");
+}
+
+#[test]
 fn mcp_scope_is_only_supported_for_claude_code() {
     let scope = Some(McpScope::User);
     assert!(

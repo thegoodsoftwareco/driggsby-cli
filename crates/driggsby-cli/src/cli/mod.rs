@@ -1,6 +1,7 @@
 mod client_id;
 pub mod commands;
 pub mod connect;
+mod connect_session;
 mod desktop_mcp_config;
 pub mod format;
 mod known_client;
@@ -30,7 +31,7 @@ Examples:
     arg_required_else_help = true,
     disable_help_subcommand = true,
     about = "Local Driggsby CLI for connecting AI clients to Driggsby over MCP.",
-    long_about = "Local Driggsby CLI for connecting AI clients to Driggsby over MCP.\n\nNormal flow:\n  1. Connect each MCP client once:\n     npx driggsby@latest mcp connect\n  2. Choose your MCP client.\n  3. Confirm readiness any time:\n     npx driggsby@latest status",
+    long_about = "Local Driggsby CLI for connecting AI clients to Driggsby over MCP.\n\nNormal flow:\n  1. Connect each MCP client once:\n     npx driggsby@latest mcp connect\n  2. Sign in to Driggsby CLI if prompted.\n  3. Confirm readiness any time:\n     npx driggsby@latest status",
     after_help = EXAMPLES,
 )]
 pub struct Cli {
@@ -57,7 +58,7 @@ pub enum Commands {
 pub enum McpCommand {
     #[command(
         about = "Connect Driggsby to one MCP client.",
-        long_about = "Connect Driggsby to one MCP client.\n\nRun this once per MCP client you want to use with Driggsby.\n\nSupported client IDs:\n  claude-code\n  claude-desktop\n  codex\n\nOther client IDs may use letters, numbers, and hyphens."
+        long_about = "Connect Driggsby to one MCP client.\n\nRun this once per MCP client you want to use with Driggsby. If your saved Driggsby CLI session is missing or older than 8 hours, this opens browser sign-in first.\n\nSupported client IDs:\n  claude-code\n  claude-desktop\n  codex\n\nOther client IDs may use letters, numbers, and hyphens."
     )]
     Connect {
         #[arg(

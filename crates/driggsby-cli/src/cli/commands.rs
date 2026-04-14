@@ -7,6 +7,7 @@ use crate::{
         client::{local_server_is_running, shutdown_broker},
         daemon::run_broker_daemon,
         installation::{clear_broker_installation, resolve_broker_status_for_display},
+        local_lock::LocalStateLock,
         resolve_secret_store::resolve_secret_store_for_disconnect_all,
     },
     cli::{connect::remove_all_known_client_configs, format::format_status_text},
@@ -20,6 +21,7 @@ fn flush_stdout() -> Result<()> {
 
 pub async fn run_disconnect_all_command(runtime_paths: &RuntimePaths) -> Result<()> {
     ensure_runtime_directories(runtime_paths)?;
+    let _disconnect_lock = LocalStateLock::acquire(runtime_paths)?;
     println!("Disconnecting Driggsby from this device...");
     flush_stdout()?;
 

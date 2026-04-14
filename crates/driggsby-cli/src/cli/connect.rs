@@ -6,17 +6,18 @@ use std::{
 use anyhow::{Result, bail};
 
 use crate::{
-    auth::login::login_broker_with_client_name,
     broker::{
         grants::{
             CLIENT_KEY_ENV, CreatedClientGrant, create_client_grant, disconnect_client_grant,
             disconnect_other_grants_for_integration, list_client_grants,
         },
         installation::read_broker_metadata,
+        local_lock::LocalStateLock,
         secret_store::SecretStore,
     },
     cli::McpScope,
     cli::client_id,
+    cli::connect_session::ensure_recent_cli_session,
     cli::desktop_mcp_config::{install_desktop_mcp_config, remove_desktop_mcp_config},
     cli::known_client::KnownClient,
     cli::supported_mcp_config::{
@@ -41,10 +42,10 @@ impl ConnectTarget {
         }
     }
 
-    fn display_name(&self) -> &str {
+    fn display_name(&self) -> String {
         match self {
-            Self::Known(client) => client.display_name(),
-            Self::Other(client_id) => client_id.as_str(),
+            Self::Known(client) => client.display_name().to_string(),
+            Self::Other(client_id) => client_id.to_string(),
         }
     }
 
@@ -66,31 +67,23 @@ pub async fn run_connect_command(
     validate_connect_target(&target)?;
     validate_mcp_scope(&target, mcp_scope)?;
     ensure_runtime_directories(runtime_paths)?;
+    let _connect_lock = LocalStateLock::acquire(runtime_paths)?;
     let display_name = target.display_name();
     println!("Connecting Driggsby to {}...", display_name);
     flush_stdout()?;
 
     let resolved_store = crate::broker::resolve_secret_store::resolve_secret_store(runtime_paths)?;
-    login_broker_with_client_name(
-        runtime_paths,
-        resolved_store.store.as_ref(),
-        Some(display_name),
-        print_manual_sign_in_url,
-    )
-    .await?;
-
-    let metadata = read_broker_metadata(runtime_paths)?
-        .ok_or_else(|| anyhow::anyhow!("The local CLI auth state is incomplete."))?;
+    let broker_id = ensure_recent_cli_session(runtime_paths, resolved_store.store.as_ref()).await?;
     let created = create_client_grant(
         resolved_store.store.as_ref(),
-        &metadata.broker_id,
-        display_name,
+        &broker_id,
+        &display_name,
         target.integration_id(),
     )?;
     if let Some(integration_id) = target.integration_id() {
         disconnect_other_grants_for_integration(
             resolved_store.store.as_ref(),
-            &metadata.broker_id,
+            &broker_id,
             integration_id,
             &created.grant.grant_id,
         )?;
@@ -117,6 +110,15 @@ pub async fn run_clients_command(
     if matches!(command, super::ClientCommand::DisconnectAll) {
         return crate::cli::commands::run_disconnect_all_command(runtime_paths).await;
     }
+    let disconnect_client = match &command {
+        super::ClientCommand::Disconnect { client } => Some(parse_client_selector(client)?),
+        super::ClientCommand::List | super::ClientCommand::DisconnectAll => None,
+    };
+    let _client_mutation_lock = if matches!(command, super::ClientCommand::Disconnect { .. }) {
+        Some(LocalStateLock::acquire(runtime_paths)?)
+    } else {
+        None
+    };
 
     let resolved_store = crate::broker::resolve_secret_store::resolve_secret_store(runtime_paths)?;
     let Some(metadata) = read_broker_metadata(runtime_paths)? else {
@@ -125,7 +127,9 @@ pub async fn run_clients_command(
     };
 
     match command {
-        super::ClientCommand::Disconnect { client } => {
+        super::ClientCommand::Disconnect { .. } => {
+            let client =
+                disconnect_client.ok_or_else(|| anyhow::anyhow!("Client ID is required."))?;
             let disconnected = disconnect_client_grant(
                 resolved_store.store.as_ref(),
                 &metadata.broker_id,
@@ -202,6 +206,12 @@ fn parse_connect_target(value: &str) -> ConnectTarget {
     ConnectTarget::Other(canonical)
 }
 
+fn parse_client_selector(value: &str) -> Result<String> {
+    let target = parse_connect_target(value);
+    validate_connect_target(&target)?;
+    Ok(target.client_id().to_string())
+}
+
 fn prompt_for_connect_target() -> Result<ConnectTarget> {
     if !io::stdin().is_terminal() {
         bail!("Pass a client name.\n\nExample:\n  npx driggsby@latest mcp connect claude-code");
@@ -235,7 +245,7 @@ fn prompt_for_other_client_name() -> Result<ConnectTarget> {
     if name.is_empty() {
         bail!("Client ID is required.");
     }
-    Ok(ConnectTarget::Other(name))
+    Ok(parse_connect_target(&name))
 }
 
 fn read_trimmed_line() -> Result<String> {
@@ -453,14 +463,6 @@ fn client_id_for_grant(grant: &BrokerClientGrant) -> &str {
 
 fn is_known_client_id(client_id: &str) -> bool {
     KnownClient::from_client_id(client_id).is_some()
-}
-
-fn print_manual_sign_in_url(sign_in_url: &str) -> Result<()> {
-    println!("Your browser did not open automatically.");
-    println!("Open this URL to finish connecting Driggsby:");
-    println!("{sign_in_url}");
-    println!();
-    flush_stdout()
 }
 
 fn flush_stdout() -> Result<()> {

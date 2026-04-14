@@ -41,6 +41,10 @@ macOS x64, Linux arm64 glibc, and Linux x64 glibc.
 npx driggsby@latest mcp connect
 ```
 
+Run `mcp connect` once for each MCP client you want to use. Driggsby opens
+browser sign-in only when the saved Driggsby CLI session is missing or older
+than 8 hours.
+
 2. Or choose a supported client directly:
 
 ```bash
@@ -49,7 +53,7 @@ npx driggsby@latest mcp connect claude-desktop
 npx driggsby@latest mcp connect codex
 ```
 
-Claude Desktop automatic setup is macOS-only in this release.
+Claude Desktop setup is macOS-only in this release.
 
 Claude Code supports explicit MCP config scope. Driggsby defaults Claude Code
 setup to user scope.
