@@ -1,9 +1,11 @@
 pub mod client;
 pub mod daemon;
 pub mod file_secret_store;
+pub mod grants;
 pub mod installation;
 pub mod keyring_secret_store;
 pub mod launch;
+pub mod local_lock;
 pub mod public_error;
 pub mod remote_mcp;
 pub mod remote_session;

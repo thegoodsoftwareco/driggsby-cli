@@ -86,6 +86,8 @@ pub struct BrokerProofClaims {
 pub struct BrokerRequest {
     pub auth_token: String,
     pub challenge: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_key: Option<String>,
     pub id: String,
     pub method: String,
     #[serde(skip_serializing_if = "Option::is_none")]

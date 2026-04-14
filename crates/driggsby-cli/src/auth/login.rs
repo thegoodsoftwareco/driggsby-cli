@@ -42,7 +42,19 @@ pub async fn login_broker(
     secret_store: &dyn SecretStore,
     on_manual_sign_in_url: impl FnOnce(&str) -> Result<()>,
 ) -> Result<BrokerLoginResult> {
-    let config = resolve_broker_auth_config()?;
+    login_broker_with_client_name(runtime_paths, secret_store, None, on_manual_sign_in_url).await
+}
+
+pub async fn login_broker_with_client_name(
+    runtime_paths: &RuntimePaths,
+    secret_store: &dyn SecretStore,
+    client_name: Option<&str>,
+    on_manual_sign_in_url: impl FnOnce(&str) -> Result<()>,
+) -> Result<BrokerLoginResult> {
+    let mut config = resolve_broker_auth_config()?;
+    if let Some(client_name) = client_name {
+        config.client_name = client_name.to_string();
+    }
     let metadata = ensure_broker_installation(runtime_paths, secret_store).await?;
     let protected_resource_metadata =
         fetch_protected_resource_metadata(&config.protected_resource_metadata_url).await?;

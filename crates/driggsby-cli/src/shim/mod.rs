@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{env, path::Path, sync::Arc};
 
 use anyhow::Result;
 use rmcp::{
@@ -15,6 +15,7 @@ use crate::{
     broker::public_error::PublicBrokerError,
     broker::{
         client::{call_broker_tool, list_broker_tools},
+        grants::{CLIENT_KEY_ENV, ClientGrantCredentials, missing_client_grant_error},
         launch::ensure_broker_running,
         resolve_secret_store::resolve_secret_store,
     },
@@ -26,6 +27,7 @@ const LOCAL_STATUS_TOOL_NAME: &str = "get_local_cli_status";
 
 #[derive(Clone)]
 struct BrokerShimServer {
+    client_credentials: Option<ClientGrantCredentials>,
     runtime_paths: RuntimePaths,
     secret_store: Arc<dyn crate::broker::secret_store::SecretStore>,
 }
@@ -60,6 +62,9 @@ impl ServerHandler for BrokerShimServer {
             return Ok(CallToolResult::success(vec![Content::text(status_text)]));
         }
 
+        let Some(client_credentials) = self.client_credentials.as_ref() else {
+            return Err(to_mcp_error(missing_client_grant_error().into()));
+        };
         let tools = self.remote_tools().await.map_err(to_mcp_error)?;
         if !tools.iter().any(|tool| tool.name == request.name.as_ref()) {
             return Err(ErrorData::new(
@@ -72,6 +77,7 @@ impl ServerHandler for BrokerShimServer {
         let result = call_broker_tool(
             &self.runtime_paths,
             self.secret_store.as_ref(),
+            client_credentials,
             request.name.as_ref(),
             request.arguments.map(serde_json::Value::Object),
         )
@@ -90,11 +96,16 @@ impl ServerHandler for BrokerShimServer {
 
 impl BrokerShimServer {
     async fn remote_tools(&self) -> Result<Vec<Tool>> {
-        let tools = list_broker_tools(&self.runtime_paths, self.secret_store.as_ref())
-            .await?
-            .ok_or_else(|| {
-                anyhow::anyhow!("The local Driggsby CLI service is not responding yet.")
-            })?;
+        let Some(client_credentials) = self.client_credentials.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let tools = list_broker_tools(
+            &self.runtime_paths,
+            self.secret_store.as_ref(),
+            client_credentials,
+        )
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("The local Driggsby CLI service is not responding yet."))?;
         let raw_tools = tools
             .get("tools")
             .and_then(serde_json::Value::as_array)
@@ -131,6 +142,7 @@ pub async fn run_mcp_server_command(
         Arc::from(resolved_secret_store.store);
     ensure_broker_running(runtime_paths, secret_store.as_ref(), current_exe).await?;
     let service = BrokerShimServer {
+        client_credentials: read_client_credentials_from_env(),
         runtime_paths: runtime_paths.clone(),
         secret_store,
     }
@@ -138,6 +150,11 @@ pub async fn run_mcp_server_command(
     .await?;
     service.waiting().await?;
     Ok(())
+}
+
+fn read_client_credentials_from_env() -> Option<ClientGrantCredentials> {
+    let client_key = env::var(CLIENT_KEY_ENV).ok()?;
+    Some(ClientGrantCredentials { client_key })
 }
 
 fn local_status_tool() -> Result<Tool> {

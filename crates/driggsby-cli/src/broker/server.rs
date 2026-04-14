@@ -10,6 +10,7 @@ use tokio::{
 use crate::runtime_paths::RuntimePaths;
 
 use super::{
+    grants::{ClientGrantCredentials, missing_client_grant_error, verify_client_grant},
     installation::build_broker_status,
     public_error::PublicBrokerError,
     remote_mcp::RemoteMcpClient,
@@ -131,6 +132,7 @@ impl LocalBrokerServer {
                 std::process::exit(0);
             }
             "list_tools" => {
+                self.verify_client_grant(&request)?;
                 ensure_fresh_remote_session(
                     &self.runtime_paths,
                     self.secret_store.as_ref(),
@@ -144,6 +146,7 @@ impl LocalBrokerServer {
                 })
             }
             "call_tool" => {
+                self.verify_client_grant(&request)?;
                 ensure_fresh_remote_session(
                     &self.runtime_paths,
                     self.secret_store.as_ref(),
@@ -169,6 +172,16 @@ impl LocalBrokerServer {
             result: Some(result),
             error: None,
         })
+    }
+
+    fn verify_client_grant(&self, request: &BrokerRequest) -> Result<()> {
+        let credentials = ClientGrantCredentials {
+            client_key: request
+                .client_key
+                .clone()
+                .ok_or_else(missing_client_grant_error)?,
+        };
+        verify_client_grant(self.secret_store.as_ref(), &self.broker_id, &credentials)
     }
 
     fn remote_session_summary(&self) -> Result<super::session::BrokerRemoteSessionSummary> {

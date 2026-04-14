@@ -16,6 +16,7 @@ use crate::runtime_paths::{RuntimePaths, ensure_runtime_directories};
 
 use super::{
     client::{call_broker_tool, ping_broker},
+    grants::create_client_grant,
     installation::{
         ensure_broker_installation, read_broker_dpop_key_pair, read_broker_local_auth_token,
     },
@@ -105,6 +106,15 @@ async fn local_broker_handles_parallel_forwarded_calls() -> Result<()> {
     };
     write_broker_remote_session(secret_store.as_ref(), &metadata.broker_id, &session)?;
     write_broker_remote_session_snapshot(&runtime_paths, &session)?;
+    let grant = create_client_grant(
+        secret_store.as_ref(),
+        &metadata.broker_id,
+        "Codex",
+        Some("codex"),
+    )?;
+    let credentials = super::grants::ClientGrantCredentials {
+        client_key: grant.client_key,
+    };
 
     let Some(auth_token) =
         read_broker_local_auth_token(secret_store.as_ref(), &metadata.broker_id)?
@@ -138,10 +148,12 @@ async fn local_broker_handles_parallel_forwarded_calls() -> Result<()> {
     for index in 0..20 {
         let runtime_paths = runtime_paths.clone();
         let secret_store = secret_store.clone();
+        let credentials = credentials.clone();
         tasks.spawn(async move {
             call_broker_tool(
                 &runtime_paths,
                 secret_store.as_ref(),
+                &credentials,
                 "echo_balance",
                 Some(json!({ "amount": format!("{index}") })),
             )
@@ -169,6 +181,7 @@ async fn local_broker_handles_parallel_forwarded_calls() -> Result<()> {
     let validation_error = call_broker_tool(
         &runtime_paths,
         secret_store.as_ref(),
+        &credentials,
         "fail_validation",
         Some(json!({ "start_date": "not-a-date" })),
     )

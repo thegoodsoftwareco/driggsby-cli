@@ -8,6 +8,7 @@ use crate::{
 };
 
 use super::{
+    grants::BrokerClientGrant,
     public_error::PublicBrokerError,
     secret_store::SecretStore,
     session::{BrokerRemoteSession, read_broker_remote_session_snapshot},
@@ -22,6 +23,8 @@ pub struct BrokerSecretBundle {
     pub schema_version: u8,
     pub local_auth_token: String,
     pub dpop_private_jwk: Jwk,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub client_grants: Vec<BrokerClientGrant>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote_session_secrets: Option<BrokerRemoteSessionSecrets>,
 }
@@ -46,6 +49,7 @@ impl BrokerSecretBundle {
             schema_version: BROKER_SECRET_BUNDLE_SCHEMA_VERSION,
             local_auth_token,
             dpop_private_jwk,
+            client_grants: Vec::new(),
             remote_session_secrets: None,
         }
     }
@@ -298,7 +302,7 @@ mod tests {
 
         assert!(error.is_some_and(|message| {
             message.contains("local CLI auth state is incomplete")
-                && message.contains("npx driggsby@latest login")
+                && message.contains("npx driggsby@latest mcp connect")
         }));
 
         // Keep this mutable variable live long enough to prove the initial write

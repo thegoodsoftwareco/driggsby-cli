@@ -14,6 +14,7 @@ use std::os::unix::fs::FileTypeExt;
 use crate::runtime_paths::RuntimePaths;
 
 use super::{
+    grants::ClientGrantCredentials,
     installation::{read_broker_local_auth_token, read_broker_metadata},
     public_error::PublicBrokerError,
     secret_store::SecretStore,
@@ -32,7 +33,7 @@ pub async fn ping_broker(
     secret_store: &dyn SecretStore,
 ) -> Result<Option<PingResult>> {
     let Some(response) =
-        send_broker_request(runtime_paths, secret_store, "ping", None, None).await?
+        send_broker_request(runtime_paths, secret_store, "ping", None, None, None).await?
     else {
         return Ok(None);
     };
@@ -44,7 +45,7 @@ pub async fn get_broker_status(
     secret_store: &dyn SecretStore,
 ) -> Result<Option<BrokerStatus>> {
     let Some(response) =
-        send_broker_request(runtime_paths, secret_store, "get_status", None, None).await?
+        send_broker_request(runtime_paths, secret_store, "get_status", None, None, None).await?
     else {
         return Ok(None);
     };
@@ -61,7 +62,7 @@ pub async fn shutdown_broker(
     secret_store: &dyn SecretStore,
 ) -> Result<bool> {
     let Some(response) =
-        send_broker_request(runtime_paths, secret_store, "shutdown", None, None).await?
+        send_broker_request(runtime_paths, secret_store, "shutdown", None, None, None).await?
     else {
         return Ok(false);
     };
@@ -74,13 +75,23 @@ pub async fn shutdown_broker(
 pub async fn list_broker_tools(
     runtime_paths: &RuntimePaths,
     secret_store: &dyn SecretStore,
+    client_credentials: &ClientGrantCredentials,
 ) -> Result<Option<Value>> {
-    send_broker_request(runtime_paths, secret_store, "list_tools", None, None).await
+    send_broker_request(
+        runtime_paths,
+        secret_store,
+        "list_tools",
+        None,
+        None,
+        Some(client_credentials),
+    )
+    .await
 }
 
 pub async fn call_broker_tool(
     runtime_paths: &RuntimePaths,
     secret_store: &dyn SecretStore,
+    client_credentials: &ClientGrantCredentials,
     tool_name: &str,
     args: Option<Value>,
 ) -> Result<Option<Value>> {
@@ -90,6 +101,7 @@ pub async fn call_broker_tool(
         "call_tool",
         Some(tool_name.to_string()),
         args,
+        Some(client_credentials),
     )
     .await
 }
@@ -115,6 +127,7 @@ async fn send_broker_request(
     method: &str,
     tool_name: Option<String>,
     args: Option<Value>,
+    client_credentials: Option<&ClientGrantCredentials>,
 ) -> Result<Option<Value>> {
     if !socket_appears_available(runtime_paths) {
         return Ok(None);
@@ -129,6 +142,7 @@ async fn send_broker_request(
     let request = BrokerRequest {
         auth_token,
         challenge: uuid::Uuid::now_v7().to_string(),
+        client_key: client_credentials.map(|value| value.client_key.clone()),
         id: uuid::Uuid::now_v7().to_string(),
         method: method.to_string(),
         tool_name,

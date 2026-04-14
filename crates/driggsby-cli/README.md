@@ -11,7 +11,7 @@
 ## Run
 
 ```bash
-npx driggsby@latest login
+npx driggsby@latest mcp connect
 ```
 
 ## Install
@@ -21,28 +21,52 @@ npm install -g driggsby
 ```
 
 If you prefer not to install globally, use `npx driggsby@latest` for
-human-invoked commands like `login`, `status`, and `logout`, and use
-`npx -y driggsby@latest mcp-server` for non-interactive MCP launcher flows.
+human-invoked commands like `mcp connect`, `mcp clients list`, `mcp clients
+disconnect-all`, and `status`. The `mcp connect` command installs the MCP
+launcher configuration for supported clients, or prints configuration for other
+MCP clients.
 
 On machines without working platform keyring support, such as some headless
 Linux servers, Driggsby falls back to an owner-only local file-backed secret
-store so the CLI can still complete login and run the broker.
+store so the CLI can still connect and run the broker.
 
 Published npm installs currently include native artifacts for macOS arm64,
 macOS x64, Linux arm64 glibc, and Linux x64 glibc.
 
 ## Quick Start
 
-1. Sign in:
+1. Connect Driggsby to an MCP client:
 
 ```bash
-npx driggsby@latest login
+npx driggsby@latest mcp connect
 ```
 
-2. Add Driggsby as an MCP server in your client:
+Run `mcp connect` once for each MCP client you want to use. Driggsby opens
+browser sign-in only when the saved Driggsby CLI session is missing or older
+than 8 hours.
+
+2. Or choose a supported client directly:
 
 ```bash
-codex mcp add driggsby -- npx -y driggsby@latest mcp-server
+npx driggsby@latest mcp connect claude-code
+npx driggsby@latest mcp connect claude-desktop
+npx driggsby@latest mcp connect codex
+```
+
+Claude Desktop setup is macOS-only in this release.
+
+Claude Code supports explicit MCP config scope. Driggsby defaults Claude Code
+setup to user scope.
+
+```bash
+npx driggsby@latest mcp connect claude-code --mcp-scope user
+npx driggsby@latest mcp connect claude-code --mcp-scope local
+```
+
+To print MCP config without mutating a supported client's config:
+
+```bash
+npx driggsby@latest mcp connect codex --no-auto-add-mcp-config
 ```
 
 3. Check broker status any time:
@@ -54,10 +78,12 @@ npx driggsby@latest status
 ## Commands
 
 ```bash
-npx driggsby@latest login
+npx driggsby@latest mcp connect
+npx driggsby@latest mcp clients list
+npx driggsby@latest mcp clients disconnect <client>
+npx driggsby@latest mcp clients disconnect-all
 npx driggsby@latest status
 npx -y driggsby@latest mcp-server
-npx driggsby@latest logout
 ```
 
 ## License

@@ -1,7 +1,6 @@
-use std::{fs::OpenOptions, path::Path, process::Stdio, time::Duration};
+use std::{path::Path, process::Stdio, time::Duration};
 
 use anyhow::{Result, bail};
-use fs2::FileExt;
 use tokio::{process::Command, time::sleep};
 
 use crate::{
@@ -12,6 +11,7 @@ use crate::{
 use super::{
     client::{ping_broker, shutdown_broker},
     installation::read_broker_installation_with_secrets,
+    local_lock::LocalStateLock,
     public_error::PublicBrokerError,
     secret_store::SecretStore,
 };
@@ -23,7 +23,7 @@ pub async fn ensure_broker_running(
     secret_store: &dyn SecretStore,
     current_exe: &Path,
 ) -> Result<()> {
-    let _startup_lock = BrokerStartupLock::acquire(runtime_paths)?;
+    let _startup_lock = LocalStateLock::acquire(runtime_paths)?;
 
     if read_broker_installation_with_secrets(runtime_paths, secret_store)?.is_none() {
         return Err(
@@ -53,23 +53,6 @@ pub async fn ensure_broker_running(
     bail!(build_broker_investigation_message(
         "The local Driggsby CLI service did not start cleanly"
     ))
-}
-
-struct BrokerStartupLock {
-    _file: std::fs::File,
-}
-
-impl BrokerStartupLock {
-    fn acquire(runtime_paths: &RuntimePaths) -> Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&runtime_paths.lock_path)?;
-        file.lock_exclusive()?;
-        Ok(Self { _file: file })
-    }
 }
 
 async fn wait_for_broker(

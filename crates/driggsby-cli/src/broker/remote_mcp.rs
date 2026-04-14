@@ -365,7 +365,7 @@ impl RemoteMcpClient {
             || response.status() == reqwest::StatusCode::FORBIDDEN
         {
             return Err(PublicBrokerError::new(
-                "Authentication has expired or the saved CLI session is no longer valid. Reconnect Driggsby by running npx driggsby@latest login.",
+                "Authentication has expired or the saved CLI session is no longer valid.\n\nNext:\n  npx driggsby@latest mcp connect",
             )
             .into());
         }

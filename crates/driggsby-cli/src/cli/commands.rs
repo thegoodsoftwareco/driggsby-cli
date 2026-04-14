@@ -1,61 +1,64 @@
 use std::io::{self, Write as _};
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 use crate::{
-    auth::login::login_broker,
     broker::{
         client::{local_server_is_running, shutdown_broker},
         daemon::run_broker_daemon,
         installation::{clear_broker_installation, resolve_broker_status_for_display},
-        resolve_secret_store::{resolve_secret_store, resolve_secret_store_for_logout},
+        local_lock::LocalStateLock,
+        resolve_secret_store::resolve_secret_store_for_disconnect_all,
     },
-    cli::format::format_status_text,
+    cli::{connect::remove_all_known_client_configs, format::format_status_text},
     runtime_paths::{RuntimePaths, ensure_runtime_directories},
-    user_guidance::DRIGGSBY_MCP_SERVER_COMMAND,
 };
-
-pub async fn run_login_command(runtime_paths: &RuntimePaths) -> Result<()> {
-    ensure_runtime_directories(runtime_paths)?;
-    println!("Preparing Driggsby sign-in...");
-    flush_stdout()?;
-
-    let resolved_store = resolve_secret_store(runtime_paths)?;
-
-    login_broker(
-        runtime_paths,
-        resolved_store.store.as_ref(),
-        print_manual_sign_in_url,
-    )
-    .await?;
-
-    println!("Connected successfully.");
-    println!();
-    println!("Configure your MCP client with:");
-    println!("  {DRIGGSBY_MCP_SERVER_COMMAND}");
-    Ok(())
-}
-
-fn print_manual_sign_in_url(sign_in_url: &str) -> Result<()> {
-    println!("Your browser did not open automatically.");
-    println!("Open this URL to finish connecting Driggsby:");
-    println!("{sign_in_url}");
-    println!();
-    flush_stdout()
-}
 
 fn flush_stdout() -> Result<()> {
     io::stdout().flush()?;
     Ok(())
 }
 
-pub async fn run_logout_command(runtime_paths: &RuntimePaths) -> Result<()> {
-    let resolved_store = resolve_secret_store_for_logout(runtime_paths)?;
-    let _ = shutdown_broker(runtime_paths, resolved_store.store.as_ref()).await;
-    clear_broker_installation(runtime_paths, resolved_store.store.as_ref())?;
-    println!("Disconnected.");
+pub async fn run_disconnect_all_command(runtime_paths: &RuntimePaths) -> Result<()> {
+    ensure_runtime_directories(runtime_paths)?;
+    println!("Disconnecting Driggsby from this device...");
+    flush_stdout()?;
+
+    let clear_result = {
+        let _disconnect_lock = LocalStateLock::acquire(runtime_paths)?;
+        match resolve_secret_store_for_disconnect_all(runtime_paths) {
+            Ok(resolved_store) => {
+                let _ = shutdown_broker(runtime_paths, resolved_store.store.as_ref()).await;
+                clear_broker_installation(runtime_paths, resolved_store.store.as_ref())
+            }
+            Err(error) => Err(error),
+        }
+    };
     println!();
-    println!("Local CLI session data has been cleared.");
+    println!("Removing supported MCP configs...");
+    remove_all_known_client_configs();
+
+    if let Err(error) = clear_result {
+        println!();
+        println!("Supported MCP config cleanup was attempted.");
+        bail!("{error}");
+    }
+
+    println!();
+    println!("Local Driggsby data was cleared.");
+    println!();
+    println!("Cleared local Driggsby data:");
+    println!("  account session");
+    println!("  broker identity");
+    println!("  connected MCP clients");
+    println!();
+    println!("Other MCP clients:");
+    println!(
+        "  Remove Driggsby manually from any MCP client outside Claude Code, Claude Desktop, and Codex."
+    );
+    println!();
+    println!("Reconnect later with:");
+    println!("  npx driggsby@latest mcp connect");
     Ok(())
 }
 
