@@ -51,7 +51,7 @@ pub async fn ensure_broker_running(
         return Ok(());
     }
     bail!(build_broker_investigation_message(
-        "The local Driggsby CLI service did not start cleanly"
+        "Driggsby service didn't start"
     ))
 }
 

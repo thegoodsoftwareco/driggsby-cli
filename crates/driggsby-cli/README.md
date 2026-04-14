@@ -21,8 +21,8 @@ npm install -g driggsby
 ```
 
 If you prefer not to install globally, use `npx driggsby@latest` for
-human-invoked commands like `mcp connect`, `mcp clients list`, `mcp clients
-disconnect-all`, and `status`. The `mcp connect` command installs the MCP
+human-invoked commands like `mcp connect`, `mcp list`, `mcp disconnect-all`,
+and `status`. The `mcp connect` command installs the MCP
 launcher configuration for supported clients, or prints configuration for other
 MCP clients.
 
@@ -79,9 +79,9 @@ npx driggsby@latest status
 
 ```bash
 npx driggsby@latest mcp connect
-npx driggsby@latest mcp clients list
-npx driggsby@latest mcp clients disconnect <client>
-npx driggsby@latest mcp clients disconnect-all
+npx driggsby@latest mcp list
+npx driggsby@latest mcp disconnect <client>
+npx driggsby@latest mcp disconnect-all
 npx driggsby@latest status
 npx -y driggsby@latest mcp-server
 ```

@@ -26,7 +26,6 @@ use super::{
 };
 
 pub use super::secrets::BrokerDpopKeyPair;
-
 const BROKER_METADATA_SCHEMA_VERSION: u8 = 2;
 
 pub struct BrokerInstallationSecrets {
@@ -240,19 +239,23 @@ fn build_display_status_from_local_state(
             None => (
                 false,
                 BrokerRemoteAccessState::NotConnected,
-                "The CLI does not have a saved session yet.".to_string(),
+                "Not signed in yet.".to_string(),
                 Some(DRIGGSBY_CONNECT_COMMAND.to_string()),
             ),
-            Some(session) if session_has_comfortable_headroom(session.access_token_expires_at.as_str()) => (
-                true,
-                BrokerRemoteAccessState::Ready,
-                "The CLI is connected and remote MCP access is ready to use.".to_string(),
-                None,
-            ),
+            Some(session)
+                if session_has_comfortable_headroom(session.access_token_expires_at.as_str()) =>
+            {
+                (
+                    true,
+                    BrokerRemoteAccessState::Ready,
+                    "Driggsby is ready.".to_string(),
+                    None,
+                )
+            }
             Some(_) => (
                 false,
                 BrokerRemoteAccessState::TemporarilyUnavailable,
-                "The CLI has a saved session. The next MCP launch will refresh it automatically before forwarding runs.".to_string(),
+                "Driggsby will reconnect automatically on next use.".to_string(),
                 Some(DRIGGSBY_CONNECT_COMMAND.to_string()),
             ),
         };

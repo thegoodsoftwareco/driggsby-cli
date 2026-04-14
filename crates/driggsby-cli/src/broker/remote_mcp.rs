@@ -97,7 +97,7 @@ impl RemoteMcpClient {
                     .unwrap_or(false)
             }) {
                 return Err(PublicBrokerError::new(
-                    "That Driggsby tool is not available in this session anymore. Start a fresh client session and try again.",
+                    "Tool not available. Restart the client session and retry.",
                 )
                 .into());
             }
@@ -365,7 +365,7 @@ impl RemoteMcpClient {
             || response.status() == reqwest::StatusCode::FORBIDDEN
         {
             return Err(PublicBrokerError::new(
-                "Authentication has expired or the saved CLI session is no longer valid.\n\nNext:\n  npx driggsby@latest mcp connect",
+                "Driggsby session expired.\n\nNext:\n  npx driggsby@latest mcp connect",
             )
             .into());
         }

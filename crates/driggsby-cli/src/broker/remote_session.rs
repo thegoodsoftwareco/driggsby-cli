@@ -66,11 +66,11 @@ pub async fn ensure_fresh_remote_session(
         return Ok(session);
     }
 
-    let metadata = fetch_authorization_server_metadata(&session.issuer).await.map_err(|_| {
-        PublicBrokerError::new(
-            "Driggsby could not refresh the local CLI session right now because it could not reach the authorization server. Wait a moment and try again."
-        )
-    })?;
+    let metadata = fetch_authorization_server_metadata(&session.issuer)
+        .await
+        .map_err(|_| {
+            PublicBrokerError::new("Can't reach Driggsby right now. Try again in a moment.")
+        })?;
     let dpop_key_pair = read_broker_dpop_key_pair(runtime_paths, secret_store, broker_id)?
         .ok_or_else(|| {
             PublicBrokerError::new(build_reauthentication_required_message(
@@ -114,7 +114,7 @@ pub async fn inspect_remote_session_readiness(
     let Some(session) = read_broker_remote_session(runtime_paths, secret_store, broker_id)? else {
         return Ok(BrokerRemoteSessionReadiness {
             connected: false,
-            detail: "The CLI does not have a saved session yet.".to_string(),
+            detail: "Not signed in yet.".to_string(),
             next_step_command: Some(DRIGGSBY_CONNECT_COMMAND.to_string()),
             ready: false,
             reauthentication_required: false,
@@ -128,8 +128,7 @@ pub async fn inspect_remote_session_readiness(
             Ok(refreshed) => {
                 return Ok(BrokerRemoteSessionReadiness {
                     connected: true,
-                    detail: "The CLI is connected and remote MCP access is ready to use."
-                        .to_string(),
+                    detail: "Driggsby is ready.".to_string(),
                     next_step_command: None,
                     ready: true,
                     reauthentication_required: false,
@@ -142,7 +141,8 @@ pub async fn inspect_remote_session_readiness(
                 if message.contains(DRIGGSBY_CONNECT_COMMAND) {
                     return Ok(BrokerRemoteSessionReadiness {
                         connected: true,
-                        detail: "The saved CLI session is no longer authorized. Remote MCP access will stay blocked until Driggsby signs in again.".to_string(),
+                        detail: "Driggsby session expired. Reconnect to restore access."
+                            .to_string(),
                         next_step_command: Some(DRIGGSBY_CONNECT_COMMAND.to_string()),
                         ready: false,
                         reauthentication_required: true,
@@ -152,7 +152,8 @@ pub async fn inspect_remote_session_readiness(
                 }
                 return Ok(BrokerRemoteSessionReadiness {
                     connected: true,
-                    detail: "Driggsby could not refresh remote MCP access right now. The CLI will stay blocked until the refresh succeeds.".to_string(),
+                    detail: "Driggsby can't refresh right now. Will retry automatically."
+                        .to_string(),
                     next_step_command: Some(DRIGGSBY_STATUS_COMMAND.to_string()),
                     ready: false,
                     reauthentication_required: false,
@@ -166,8 +167,7 @@ pub async fn inspect_remote_session_readiness(
     if session_needs_refresh(&session) {
         return Ok(BrokerRemoteSessionReadiness {
             connected: true,
-            detail: "The saved CLI session needs a token refresh before remote MCP access can run."
-                .to_string(),
+            detail: "Driggsby will reconnect automatically on next use.".to_string(),
             next_step_command: Some(DRIGGSBY_STATUS_COMMAND.to_string()),
             ready: false,
             reauthentication_required: false,
@@ -178,7 +178,7 @@ pub async fn inspect_remote_session_readiness(
 
     Ok(BrokerRemoteSessionReadiness {
         connected: true,
-        detail: "The CLI is connected and remote MCP access is ready to use.".to_string(),
+        detail: "Driggsby is ready.".to_string(),
         next_step_command: None,
         ready: true,
         reauthentication_required: false,

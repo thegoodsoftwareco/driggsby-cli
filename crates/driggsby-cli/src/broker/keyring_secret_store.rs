@@ -133,7 +133,7 @@ impl SecretStore for KeyringSecretStore {
 
 fn platform_secure_storage_error() -> anyhow::Error {
     anyhow::anyhow!(
-        "Driggsby could not access platform secure storage. Reopen the desktop session or restore keychain access, then try again."
+        "Can't access platform secure storage. Reopen the desktop session or restore keychain access."
     )
 }
 

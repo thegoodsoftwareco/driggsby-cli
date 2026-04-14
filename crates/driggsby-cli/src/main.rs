@@ -34,7 +34,23 @@ async fn run() -> Result<()> {
             } => {
                 run_connect_command(&runtime_paths, client, no_auto_add_mcp_config, mcp_scope).await
             }
-            McpCommand::Clients { command } => run_clients_command(&runtime_paths, command).await,
+            McpCommand::List => {
+                run_clients_command(&runtime_paths, driggsby::cli::McpClientAction::List).await
+            }
+            McpCommand::Disconnect { client } => {
+                run_clients_command(
+                    &runtime_paths,
+                    driggsby::cli::McpClientAction::Disconnect { client },
+                )
+                .await
+            }
+            McpCommand::DisconnectAll => {
+                run_clients_command(
+                    &runtime_paths,
+                    driggsby::cli::McpClientAction::DisconnectAll,
+                )
+                .await
+            }
         },
         Commands::Status => run_status_command(&runtime_paths).await,
         Commands::McpServer => run_mcp_server_command(&runtime_paths, &current_exe).await,

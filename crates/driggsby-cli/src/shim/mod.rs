@@ -180,7 +180,7 @@ fn to_mcp_error(error: anyhow::Error) -> ErrorData {
 
     ErrorData::new(
         ErrorCode::INTERNAL_ERROR,
-        "Driggsby could not complete that request. Check the input and try again.\n\nNext:\n  npx driggsby@latest status",
+        "Request failed. Verify tool name and arguments, then retry.",
         None,
     )
 }

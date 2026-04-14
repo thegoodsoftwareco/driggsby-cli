@@ -1,3 +1,4 @@
+mod client_config_cleanup;
 mod client_id;
 pub mod commands;
 pub mod connect;
@@ -17,9 +18,9 @@ Examples:
   npx driggsby@latest mcp connect codex
   npx driggsby@latest mcp connect claude-code --mcp-scope user
   npx driggsby@latest mcp connect codex --no-auto-add-mcp-config
-  npx driggsby@latest mcp clients list
-  npx driggsby@latest mcp clients disconnect codex
-  npx driggsby@latest mcp clients disconnect-all
+  npx driggsby@latest mcp list
+  npx driggsby@latest mcp disconnect codex
+  npx driggsby@latest mcp disconnect-all
   npx driggsby@latest status
   npx -y driggsby@latest mcp-server";
 
@@ -30,8 +31,8 @@ Examples:
     version,
     arg_required_else_help = true,
     disable_help_subcommand = true,
-    about = "Local Driggsby CLI for connecting AI clients to Driggsby over MCP.",
-    long_about = "Local Driggsby CLI for connecting AI clients to Driggsby over MCP.\n\nNormal flow:\n  1. Connect each MCP client once:\n     npx driggsby@latest mcp connect\n  2. Sign in to Driggsby CLI if prompted.\n  3. Confirm readiness any time:\n     npx driggsby@latest status",
+    about = "Connect AI clients to your Driggsby financial data over MCP.",
+    long_about = "Connect AI clients to your Driggsby financial data over MCP.\n\n  npx driggsby@latest mcp connect      # set up a client\n  npx driggsby@latest status            # check readiness",
     after_help = EXAMPLES,
 )]
 pub struct Cli {
@@ -41,14 +42,14 @@ pub struct Cli {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum Commands {
-    #[command(about = "Manage Driggsby MCP client connections.")]
+    #[command(about = "Manage connected AI clients.")]
     Mcp {
         #[command(subcommand)]
         command: McpCommand,
     },
-    #[command(about = "Show a clear readiness summary for humans and agents.")]
+    #[command(about = "Check if Driggsby is ready.")]
     Status,
-    #[command(about = "Run the local MCP server that AI clients should launch.")]
+    #[command(about = "Run the MCP server (launched by AI clients).")]
     McpServer,
     #[command(name = "cli-daemon", hide = true)]
     CliDaemon,
@@ -57,48 +58,42 @@ pub enum Commands {
 #[derive(Debug, Clone, Subcommand)]
 pub enum McpCommand {
     #[command(
-        about = "Connect Driggsby to one MCP client.",
-        long_about = "Connect Driggsby to one MCP client.\n\nRun this once per MCP client you want to use with Driggsby. If your saved Driggsby CLI session is missing or older than 8 hours, this opens browser sign-in first.\n\nSupported client IDs:\n  claude-code\n  claude-desktop\n  codex\n\nOther client IDs may use letters, numbers, and hyphens."
+        about = "Connect an AI client to Driggsby.",
+        long_about = "Connect an AI client to Driggsby.\n\nRun once per client. Opens browser sign-in if needed.\n\nSupported clients: claude-code, claude-desktop, codex\nOther IDs: letters, numbers, and hyphens."
     )]
     Connect {
-        #[arg(
-            help = "Supported client ID: claude-code, claude-desktop, or codex. Other IDs may use letters, numbers, and hyphens."
-        )]
+        #[arg(help = "Client ID: claude-code, claude-desktop, codex, or custom.")]
         client: Option<String>,
-        #[arg(
-            long,
-            help = "Print the MCP config instead of automatically adding it for supported clients."
-        )]
+        #[arg(long, help = "Print MCP config instead of auto-adding it.")]
         no_auto_add_mcp_config: bool,
         #[arg(
             long,
             value_enum,
-            help = "Claude Code MCP config scope only. Supported values: local, user. Defaults to user."
+            help = "Claude Code only. Values: local, user (default)."
         )]
         mcp_scope: Option<McpScope>,
     },
-    #[command(about = "List or disconnect connected local MCP clients.")]
-    Clients {
-        #[command(subcommand)]
-        command: ClientCommand,
-    },
-}
-
-#[derive(Debug, Clone, Subcommand)]
-pub enum ClientCommand {
-    #[command(about = "List connected local MCP clients.")]
+    #[command(about = "List connected clients.")]
     List,
-    #[command(about = "Disconnect a connected local MCP client.")]
+    #[command(
+        about = "Disconnect a client.",
+        long_about = "Disconnect a client.\n\nRun `npx driggsby@latest mcp list` to see connected client IDs.\n\nSupported client IDs: claude-code, claude-desktop, codex\nCustom IDs are the names shown by `mcp list`."
+    )]
     Disconnect {
-        #[arg(
-            help = "Client ID, or known client id such as claude-code, claude-desktop, or codex."
-        )]
-        client: String,
+        #[arg(help = "Client ID: claude-code, claude-desktop, codex, or custom.")]
+        client: Option<String>,
     },
     #[command(
         name = "disconnect-all",
-        about = "Disconnect all local Driggsby MCP clients and clear local MCP state."
+        about = "Disconnect all clients and clear local state."
     )]
+    DisconnectAll,
+}
+
+#[derive(Debug, Clone)]
+pub enum McpClientAction {
+    List,
+    Disconnect { client: Option<String> },
     DisconnectAll,
 }
 
@@ -139,15 +134,16 @@ mod tests {
         assert!(help.contains("npx driggsby@latest mcp connect"));
         assert!(help.contains("npx driggsby@latest mcp connect claude-code"));
         assert!(help.contains("npx driggsby@latest mcp connect claude-desktop"));
+        assert!(help.contains("npx driggsby@latest mcp list"));
         assert!(help.contains("--no-auto-add-mcp-config"));
         assert!(help.contains("--mcp-scope"));
-        assert!(help.contains("npx driggsby@latest mcp clients list"));
-        assert!(help.contains("npx driggsby@latest mcp clients disconnect-all"));
+        assert!(help.contains("npx driggsby@latest mcp disconnect-all"));
+        assert!(!help.contains("npx driggsby@latest mcp clients"));
         assert!(!help.contains("npx driggsby@latest login"));
         assert!(!help.contains("npx driggsby@latest revoke-all"));
         assert!(!help.contains("npx driggsby@latest logout"));
         assert!(help.contains("npx -y driggsby@latest mcp-server"));
         assert!(help.contains("npx driggsby@latest status"));
-        assert!(help.contains("Manage Driggsby MCP client connections"));
+        assert!(help.contains("Manage connected AI clients"));
     }
 }
