@@ -67,38 +67,47 @@ pub async fn run_connect_command(
     validate_connect_target(&target)?;
     validate_mcp_scope(&target, mcp_scope)?;
     ensure_runtime_directories(runtime_paths)?;
-    let _connect_lock = LocalStateLock::acquire(runtime_paths)?;
     let display_name = target.display_name();
     println!("Connecting Driggsby to {}...", display_name);
     flush_stdout()?;
 
     let resolved_store = crate::broker::resolve_secret_store::resolve_secret_store(runtime_paths)?;
-    let broker_id = ensure_recent_cli_session(runtime_paths, resolved_store.store.as_ref()).await?;
-    let created = create_client_grant(
-        resolved_store.store.as_ref(),
-        &broker_id,
-        &display_name,
-        target.integration_id(),
-    )?;
-    if let Some(integration_id) = target.integration_id() {
+    let (broker_id, created) = {
+        let _connect_lock = LocalStateLock::acquire(runtime_paths)?;
+        let broker_id =
+            ensure_recent_cli_session(runtime_paths, resolved_store.store.as_ref()).await?;
+        let created = create_client_grant(
+            resolved_store.store.as_ref(),
+            &broker_id,
+            &display_name,
+            target.integration_id(),
+        )?;
+        (broker_id, created)
+    };
+
+    println!();
+    let should_replace_previous = match &target {
+        ConnectTarget::Known(client) => {
+            if no_auto_add_mcp_config {
+                print_one_time_mcp_config_with_secret(&created);
+                false
+            } else {
+                install_known_client(*client, &created, mcp_scope)?
+            }
+        }
+        ConnectTarget::Other(_) => {
+            print_one_time_mcp_config_with_secret(&created);
+            false
+        }
+    };
+    if should_replace_previous && let Some(integration_id) = target.integration_id() {
+        let _connect_lock = LocalStateLock::acquire(runtime_paths)?;
         disconnect_other_grants_for_integration(
             resolved_store.store.as_ref(),
             &broker_id,
             integration_id,
             &created.grant.grant_id,
         )?;
-    }
-
-    println!();
-    match target {
-        ConnectTarget::Known(client) => {
-            if no_auto_add_mcp_config {
-                print_one_time_mcp_config_with_secret(&created);
-            } else {
-                let _installed = install_known_client(client, &created, mcp_scope)?;
-            }
-        }
-        ConnectTarget::Other(_) => print_one_time_mcp_config_with_secret(&created),
     }
     Ok(())
 }
@@ -114,11 +123,6 @@ pub async fn run_clients_command(
         super::ClientCommand::Disconnect { client } => Some(parse_client_selector(client)?),
         super::ClientCommand::List | super::ClientCommand::DisconnectAll => None,
     };
-    let _client_mutation_lock = if matches!(command, super::ClientCommand::Disconnect { .. }) {
-        Some(LocalStateLock::acquire(runtime_paths)?)
-    } else {
-        None
-    };
 
     let Some(metadata) = read_broker_metadata(runtime_paths)? else {
         println!("No connected MCP clients.");
@@ -130,11 +134,14 @@ pub async fn run_clients_command(
         super::ClientCommand::Disconnect { .. } => {
             let client =
                 disconnect_client.ok_or_else(|| anyhow::anyhow!("Client ID is required."))?;
-            let disconnected = disconnect_client_grant(
-                resolved_store.store.as_ref(),
-                &metadata.broker_id,
-                &client,
-            )?;
+            let disconnected = {
+                let _client_mutation_lock = LocalStateLock::acquire(runtime_paths)?;
+                disconnect_client_grant(
+                    resolved_store.store.as_ref(),
+                    &metadata.broker_id,
+                    &client,
+                )?
+            };
             if disconnected.is_empty() {
                 println!("No matching connected MCP client found for {client}.");
             } else {

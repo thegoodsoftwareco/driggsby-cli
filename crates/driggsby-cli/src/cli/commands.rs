@@ -21,16 +21,18 @@ fn flush_stdout() -> Result<()> {
 
 pub async fn run_disconnect_all_command(runtime_paths: &RuntimePaths) -> Result<()> {
     ensure_runtime_directories(runtime_paths)?;
-    let _disconnect_lock = LocalStateLock::acquire(runtime_paths)?;
     println!("Disconnecting Driggsby from this device...");
     flush_stdout()?;
 
-    let clear_result = match resolve_secret_store_for_disconnect_all(runtime_paths) {
-        Ok(resolved_store) => {
-            let _ = shutdown_broker(runtime_paths, resolved_store.store.as_ref()).await;
-            clear_broker_installation(runtime_paths, resolved_store.store.as_ref())
+    let clear_result = {
+        let _disconnect_lock = LocalStateLock::acquire(runtime_paths)?;
+        match resolve_secret_store_for_disconnect_all(runtime_paths) {
+            Ok(resolved_store) => {
+                let _ = shutdown_broker(runtime_paths, resolved_store.store.as_ref()).await;
+                clear_broker_installation(runtime_paths, resolved_store.store.as_ref())
+            }
+            Err(error) => Err(error),
         }
-        Err(error) => Err(error),
     };
     println!();
     println!("Removing supported MCP configs...");
