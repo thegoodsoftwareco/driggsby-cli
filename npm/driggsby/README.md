@@ -1,40 +1,27 @@
-# driggsby
+# Driggsby
 
-`driggsby` helps configure AI clients to connect directly to Driggsby over MCP.
+[Driggsby](https://driggsby.com) is an MCP server for personal finance. You
+link accounts through [Plaid](https://plaid.com), and your AI client gets
+read-only MCP tools for transactions, balances, investments, and debts.
 
-## Quick Start
+## Setup
 
 ```bash
 npx driggsby@latest mcp setup
 ```
 
-Run `mcp setup` once for each MCP client you want to use. Your AI client handles
-OAuth with Driggsby when it connects to:
-
-```text
-https://app.driggsby.com/mcp
-```
-
-For supported clients, you can set up directly:
+Detects your client and runs its native MCP setup command. Or specify one:
 
 ```bash
 npx driggsby@latest mcp setup claude-code
 npx driggsby@latest mcp setup codex
 ```
 
-Claude Code MCP scope can be set explicitly with `-s`. Driggsby defaults
-Claude Code setup to user scope.
+After setup, authenticate Driggsby through your client — run `/mcp` in
+Claude Code, or sign in through the browser window Codex opens.
 
-```bash
-npx driggsby@latest mcp setup claude-code -s user
-npx driggsby@latest mcp setup claude-code -s local
-```
-
-Print the native client command without running it:
-
-```bash
-npx driggsby@latest mcp setup codex --print
-```
+See the [GitHub repo](https://github.com/thegoodsoftwareco/driggsby-cli) for
+tools, examples, and full documentation.
 
 ## License
 

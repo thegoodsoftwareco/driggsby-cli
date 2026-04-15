@@ -1,43 +1,62 @@
-# Driggsby CLI
+# Driggsby
 
-`driggsby` helps configure AI clients to connect directly to Driggsby over MCP.
+[Driggsby](https://driggsby.com) is an MCP server for personal finance. You
+link accounts through [Plaid](https://plaid.com), and your AI client gets
+read-only MCP tools for transactions, balances, investments, and debts.
 
-## Quick Start
-
-Set up Driggsby for an MCP client:
+## Setup
 
 ```bash
 npx driggsby@latest mcp setup
 ```
 
-Run `mcp setup` once for each MCP client you want to use. Your AI client handles
-OAuth with Driggsby when it connects to:
-
-```text
-https://app.driggsby.com/mcp
-```
-
-You can also choose a supported client directly:
+Detects your client and runs its native MCP setup command. Or specify one:
 
 ```bash
 npx driggsby@latest mcp setup claude-code
 npx driggsby@latest mcp setup codex
 ```
 
-Claude Code MCP scope can be set explicitly with `-s`. Driggsby defaults
-Claude Code setup to user scope.
+After setup, authenticate Driggsby through your client — run `/mcp` in
+Claude Code, or sign in through the browser window Codex opens.
+
+## Tools
+
+Includes tools like:
+
+| Tool | Description |
+|---|---|
+| `get_overview` | Balances, accounts, net worth |
+| `search_cash_transactions` | Search and filter across all accounts |
+| `query_cash_sql` | SQL over transaction data |
+| `list_recurring_transactions` | Subscriptions and recurring payments |
+| `list_investment_holdings` | Portfolio positions |
+| `list_outstanding_debts` | Balances, rates, minimums |
+| `query_investment_sql` | SQL over investment data |
+
+## Examples
+
+- "What's my net worth across all accounts?"
+- "How much did I spend on dining out last month?"
+- "List every recurring subscription."
+- "Find every Amazon charge over $100 this year."
+- "Show my top 10 merchants by total spend this year."
+
+## Options
 
 ```bash
-npx driggsby@latest mcp setup claude-code -s user
+# Claude Code scope (user by default, local for project-only)
 npx driggsby@latest mcp setup claude-code -s local
-```
 
-Print the native client command without running it:
-
-```bash
+# Print the native command without running it
 npx driggsby@latest mcp setup codex --print
 ```
 
+## Security
+
+Read-only via Plaid. Cannot move money, initiate transfers, or make trades.
+See [driggsby.com](https://driggsby.com) for details.
+
 ## License
 
-Licensed under the Apache License, Version 2.0. See `LICENSE`.
+Apache-2.0 — see [LICENSE](LICENSE).
