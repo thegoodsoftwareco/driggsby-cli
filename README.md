@@ -10,7 +10,8 @@ read-only MCP tools for transactions, balances, investments, and debts.
 npx driggsby@latest mcp setup
 ```
 
-Detects your client and runs its native MCP setup command. Or specify one:
+This prompts you to choose a supported client, then runs its native MCP setup command.
+Or specify one:
 
 ```bash
 npx driggsby@latest mcp setup claude-code
