@@ -8,9 +8,9 @@ use crate::{
         daemon::run_broker_daemon,
         installation::{clear_broker_installation, resolve_broker_status_for_display},
         local_lock::LocalStateLock,
-        resolve_secret_store::resolve_secret_store_for_disconnect_all,
+        resolve_secret_store::resolve_secret_store_for_revoke_all,
     },
-    cli::{client_config_cleanup::remove_all_known_client_configs, format::format_status_text},
+    cli::format::format_status_text,
     runtime_paths::{RuntimePaths, ensure_runtime_directories},
 };
 
@@ -19,14 +19,14 @@ fn flush_stdout() -> Result<()> {
     Ok(())
 }
 
-pub async fn run_disconnect_all_command(runtime_paths: &RuntimePaths) -> Result<()> {
+pub async fn run_revoke_all_command(runtime_paths: &RuntimePaths) -> Result<()> {
     ensure_runtime_directories(runtime_paths)?;
-    println!("Disconnecting Driggsby...");
+    println!("Revoking Driggsby access on this device...");
     flush_stdout()?;
 
     let clear_result = {
-        let _disconnect_lock = LocalStateLock::acquire(runtime_paths)?;
-        match resolve_secret_store_for_disconnect_all(runtime_paths) {
+        let _revoke_lock = LocalStateLock::acquire(runtime_paths)?;
+        match resolve_secret_store_for_revoke_all(runtime_paths) {
             Ok(resolved_store) => {
                 let _ = shutdown_broker(runtime_paths, resolved_store.store.as_ref()).await;
                 clear_broker_installation(runtime_paths, resolved_store.store.as_ref())
@@ -34,9 +34,6 @@ pub async fn run_disconnect_all_command(runtime_paths: &RuntimePaths) -> Result<
             Err(error) => Err(error),
         }
     };
-    println!();
-    println!("MCP config cleanup:");
-    remove_all_known_client_configs();
 
     if let Err(error) = clear_result {
         println!();
@@ -44,12 +41,12 @@ pub async fn run_disconnect_all_command(runtime_paths: &RuntimePaths) -> Result<
     }
 
     println!();
-    println!("Driggsby disconnected.");
+    println!("Driggsby access revoked.");
     println!();
-    println!("Other clients may still have Driggsby configured. Remove manually.");
+    println!("MCP configs were not changed.");
     println!();
-    println!("Reconnect:");
-    println!("  npx driggsby@latest mcp connect");
+    println!("Set up again:");
+    println!("  npx driggsby@latest mcp setup");
     Ok(())
 }
 

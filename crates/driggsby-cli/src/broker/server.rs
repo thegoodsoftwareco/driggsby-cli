@@ -188,7 +188,7 @@ impl LocalBrokerServer {
         Ok(read_broker_remote_session_snapshot(&self.runtime_paths)?
             .ok_or_else(|| {
                 PublicBrokerError::new(
-                    "Driggsby is not connected.\n\nNext:\n  npx driggsby@latest mcp connect",
+                    "Driggsby is not connected.\n\nNext:\n  npx driggsby@latest mcp setup",
                 )
             })?
             .session)
@@ -202,7 +202,7 @@ impl LocalBrokerServer {
             read_broker_remote_session_secrets(self.secret_store.as_ref(), &self.broker_id)?
                 .ok_or_else(|| {
                     PublicBrokerError::new(
-                        "Driggsby is not connected.\n\nNext:\n  npx driggsby@latest mcp connect",
+                        "Driggsby is not connected.\n\nNext:\n  npx driggsby@latest mcp setup",
                     )
                 })?;
         verify_broker_remote_session_binding(summary, &secrets)?;

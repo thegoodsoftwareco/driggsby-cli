@@ -52,28 +52,6 @@ fn install_desktop_mcp_config_at_path(path: &Path, created: &CreatedClientGrant)
     Ok(())
 }
 
-pub(super) fn remove_desktop_mcp_config(client: DesktopMcpConfigClient) -> Result<bool> {
-    let path = client.config_path()?;
-    remove_desktop_mcp_config_at_path(&path)
-}
-
-fn remove_desktop_mcp_config_at_path(path: &Path) -> Result<bool> {
-    let Some(mut config) = read_desktop_config(path)? else {
-        return Ok(false);
-    };
-    let Some(object) = config.as_object_mut() else {
-        return Ok(false);
-    };
-    let Some(servers) = object.get_mut("mcpServers").and_then(Value::as_object_mut) else {
-        return Ok(false);
-    };
-    let removed = servers.remove("driggsby").is_some();
-    if removed {
-        write_desktop_config(path, &config)?;
-    }
-    Ok(removed)
-}
-
 fn server_config(created: &CreatedClientGrant) -> Value {
     let mut env = Map::new();
     env.insert(
@@ -196,7 +174,7 @@ fn infer_display_name_from_path(path: &Path) -> &'static str {
 mod tests {
     use serde_json::json;
 
-    use super::{install_desktop_mcp_config_at_path, remove_desktop_mcp_config_at_path};
+    use super::install_desktop_mcp_config_at_path;
 
     #[test]
     fn claude_desktop_config_round_trips() -> anyhow::Result<()> {
@@ -229,10 +207,6 @@ mod tests {
             })
         );
 
-        let path = temp_dir.path().join("claude_desktop_config.json");
-        assert!(remove_desktop_mcp_config_at_path(&path)?);
-        let config: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path)?)?;
-        assert!(config["mcpServers"]["driggsby"].is_null());
         Ok(())
     }
 }

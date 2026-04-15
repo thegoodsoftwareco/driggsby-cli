@@ -11,7 +11,7 @@
 ## Run
 
 ```bash
-npx driggsby@latest mcp connect
+npx driggsby@latest mcp setup
 ```
 
 ## Install
@@ -21,8 +21,8 @@ npm install -g driggsby
 ```
 
 If you prefer not to install globally, use `npx driggsby@latest` for
-human-invoked commands like `mcp connect`, `mcp list`, `mcp disconnect-all`,
-and `status`. The `mcp connect` command installs the MCP
+human-invoked commands like `mcp setup`, `mcp list`, `mcp revoke-all`,
+and `status`. The `mcp setup` command installs the MCP
 launcher configuration for supported clients, or prints configuration for other
 MCP clients.
 
@@ -35,22 +35,22 @@ macOS x64, Linux arm64 glibc, and Linux x64 glibc.
 
 ## Quick Start
 
-1. Connect Driggsby to an MCP client:
+1. Set up Driggsby for an MCP client:
 
 ```bash
-npx driggsby@latest mcp connect
+npx driggsby@latest mcp setup
 ```
 
-Run `mcp connect` once for each MCP client you want to use. Driggsby opens
+Run `mcp setup` once for each MCP client you want to use. Driggsby opens
 browser sign-in only when the saved Driggsby CLI session is missing or older
 than 8 hours.
 
 2. Or choose a supported client directly:
 
 ```bash
-npx driggsby@latest mcp connect claude-code
-npx driggsby@latest mcp connect claude-desktop
-npx driggsby@latest mcp connect codex
+npx driggsby@latest mcp setup claude-code
+npx driggsby@latest mcp setup claude-desktop
+npx driggsby@latest mcp setup codex
 ```
 
 Claude Desktop setup is macOS-only in this release.
@@ -59,14 +59,14 @@ Claude Code supports explicit MCP config scope. Driggsby defaults Claude Code
 setup to user scope.
 
 ```bash
-npx driggsby@latest mcp connect claude-code --mcp-scope user
-npx driggsby@latest mcp connect claude-code --mcp-scope local
+npx driggsby@latest mcp setup claude-code --mcp-scope user
+npx driggsby@latest mcp setup claude-code --mcp-scope local
 ```
 
 To print MCP config without mutating a supported client's config:
 
 ```bash
-npx driggsby@latest mcp connect codex --no-auto-add-mcp-config
+npx driggsby@latest mcp setup codex --no-auto-add-mcp-config
 ```
 
 3. Check broker status any time:
@@ -78,10 +78,10 @@ npx driggsby@latest status
 ## Commands
 
 ```bash
-npx driggsby@latest mcp connect
+npx driggsby@latest mcp setup
 npx driggsby@latest mcp list
-npx driggsby@latest mcp disconnect <client>
-npx driggsby@latest mcp disconnect-all
+npx driggsby@latest mcp revoke <client>
+npx driggsby@latest mcp revoke-all
 npx driggsby@latest status
 npx -y driggsby@latest mcp-server
 ```

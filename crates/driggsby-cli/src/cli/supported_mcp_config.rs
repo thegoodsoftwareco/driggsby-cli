@@ -58,10 +58,6 @@ pub(super) fn build_installer_command(
     }
 }
 
-pub(super) fn build_remover_command(client: CliMcpClient) -> McpConfigCommand {
-    build_scoped_remover_command(client, None)
-}
-
 pub(super) fn build_scoped_remover_command(
     client: CliMcpClient,
     scope: Option<McpScope>,
@@ -92,6 +88,7 @@ pub(super) fn build_scoped_remover_command(
     }
 }
 
+#[cfg(test)]
 pub(super) fn render_shell_command(command: &McpConfigCommand) -> String {
     std::iter::once(command.program.as_str())
         .chain(command.args.iter().map(String::as_str))
@@ -100,6 +97,7 @@ pub(super) fn render_shell_command(command: &McpConfigCommand) -> String {
         .join(" ")
 }
 
+#[cfg(test)]
 fn shell_quote(value: &str) -> String {
     if value.bytes().all(|byte| {
         byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'/' | b'=')

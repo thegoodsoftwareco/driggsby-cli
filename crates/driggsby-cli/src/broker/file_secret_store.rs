@@ -22,14 +22,14 @@ const FILE_SECRET_STORE_INCOMPLETE_MESSAGE: &str = "\
 Driggsby local secret store is incomplete.
 
 Next:
-  npx driggsby@latest mcp disconnect-all
-  npx driggsby@latest mcp connect";
+  npx driggsby@latest mcp revoke-all
+  npx driggsby@latest mcp setup";
 const FILE_SECRET_STORE_INVALID_MESSAGE: &str = "\
 Driggsby local secret store is invalid.
 
 Next:
-  npx driggsby@latest mcp disconnect-all
-  npx driggsby@latest mcp connect";
+  npx driggsby@latest mcp revoke-all
+  npx driggsby@latest mcp setup";
 const FILE_SECRET_STORE_SCHEMA_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

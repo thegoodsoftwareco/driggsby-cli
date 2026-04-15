@@ -95,13 +95,13 @@ fn fallback_notice(runtime_paths: &RuntimePaths) -> String {
     )
 }
 
-pub fn resolve_secret_store_for_disconnect_all(
+pub fn resolve_secret_store_for_revoke_all(
     runtime_paths: &RuntimePaths,
 ) -> Result<ResolvedSecretStore> {
     match resolve_secret_store(runtime_paths) {
         Ok(store) => Ok(store),
         Err(_) => bail!(
-            "Can't access secure storage from this shell.\n\nNext:\n  Run from a desktop terminal:\n    npx driggsby@latest mcp disconnect-all"
+            "Can't access secure storage from this shell.\n\nNext:\n  Run from a desktop terminal:\n    npx driggsby@latest mcp revoke-all"
         ),
     }
 }

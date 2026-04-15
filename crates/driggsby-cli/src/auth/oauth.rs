@@ -161,7 +161,7 @@ pub async fn refresh_access_token(
                 .iter()
                 .any(|needle| body.contains(needle)))
         {
-            bail!("Driggsby session expired.\n\nNext:\n  npx driggsby@latest mcp connect");
+            bail!("Driggsby session expired.\n\nNext:\n  npx driggsby@latest mcp setup");
         }
         bail!("Can't reach Driggsby right now. Try again in a moment.");
     }

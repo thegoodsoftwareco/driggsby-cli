@@ -1,6 +1,6 @@
-pub const DRIGGSBY_CONNECT_COMMAND: &str = "npx driggsby@latest mcp connect";
+pub const DRIGGSBY_CONNECT_COMMAND: &str = "npx driggsby@latest mcp setup";
 pub const DRIGGSBY_STATUS_COMMAND: &str = "npx driggsby@latest status";
-pub const DRIGGSBY_DISCONNECT_ALL_COMMAND: &str = "npx driggsby@latest mcp disconnect-all";
+pub const DRIGGSBY_DISCONNECT_ALL_COMMAND: &str = "npx driggsby@latest mcp revoke-all";
 pub const DRIGGSBY_MCP_SERVER_COMMAND: &str = "npx -y driggsby@latest mcp-server";
 
 pub fn build_reauthentication_required_message(detail: &str) -> String {
