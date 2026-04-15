@@ -25,3 +25,19 @@ fn mcp_scope_is_only_supported_for_claude_code() {
     assert!(super::validate_mcp_scope(KnownClient::ClaudeCode, scope).is_ok());
     assert!(super::validate_mcp_scope(KnownClient::Codex, scope).is_err());
 }
+
+#[test]
+fn next_steps_are_client_specific() {
+    assert_eq!(
+        super::next_step_lines(KnownClient::ClaudeCode),
+        ["  Open Claude Code, run /mcp, and authenticate Driggsby to get started."]
+    );
+    assert_eq!(
+        super::next_step_lines(KnownClient::Codex),
+        [
+            "  Complete the Driggsby sign-in in the browser window opened by Codex.",
+            "  If no browser window opened, run:",
+            "    codex mcp login driggsby",
+        ]
+    );
+}

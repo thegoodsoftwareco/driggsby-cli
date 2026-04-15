@@ -44,35 +44,23 @@ pub async fn run_setup_command(
             reinstall_existing_client(client, mcp_scope).await
         }
         Ok(Ok(_)) => {
-            print_auto_setup_failure(
-                client,
-                &format!("{} mcp add returned an error.", installer.program),
-                &installer,
-            );
+            print_auto_setup_failure(client, "The client command returned an error.", &installer);
             Ok(())
         }
         Ok(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => {
             print_auto_setup_failure(
                 client,
-                &format!("{} was not found.", installer.program),
+                &format!("{} is not installed or not on PATH.", client.display_name()),
                 &installer,
             );
             Ok(())
         }
         Ok(Err(_)) => {
-            print_auto_setup_failure(
-                client,
-                &format!("Could not run {}.", installer.program),
-                &installer,
-            );
+            print_auto_setup_failure(client, "Could not start the client command.", &installer);
             Ok(())
         }
         Err(_) => {
-            print_auto_setup_failure(
-                client,
-                &format!("{} mcp add timed out.", installer.program),
-                &installer,
-            );
+            print_auto_setup_failure(client, "The client command timed out.", &installer);
             Ok(())
         }
     }
@@ -87,6 +75,9 @@ fn resolve_client(requested_client: Option<String>) -> Result<KnownClient> {
 
 pub(super) fn parse_client(value: &str) -> Result<KnownClient> {
     let canonical = client_id::canonicalize(value);
+    if canonical.is_empty() {
+        bail!("Client is required.\n\nSupported clients:\n  claude-code\n  codex");
+    }
     let Some(client) = KnownClient::from_client_id(&canonical) else {
         bail!("Unsupported client: {canonical}\n\nSupported clients:\n  claude-code\n  codex");
     };
@@ -142,7 +133,7 @@ async fn reinstall_existing_client(client: KnownClient, mcp_scope: Option<McpSco
                 _ => {
                     print_auto_setup_failure(
                         client,
-                        "could not update existing MCP config.",
+                        "Could not replace the existing Driggsby MCP config.",
                         &installer,
                     );
                     Ok(())
@@ -150,7 +141,11 @@ async fn reinstall_existing_client(client: KnownClient, mcp_scope: Option<McpSco
             }
         }
         _ => {
-            print_auto_setup_failure(client, "could not replace existing MCP config.", &installer);
+            print_auto_setup_failure(
+                client,
+                "Could not remove the existing Driggsby MCP config.",
+                &installer,
+            );
             Ok(())
         }
     }
@@ -171,14 +166,33 @@ fn print_success(client: KnownClient) {
     println!("  {DRIGGSBY_MCP_URL}");
     println!();
     println!("Next:");
-    println!(
-        "  Open {} and authenticate Driggsby when prompted.",
-        client.display_name()
-    );
+    print_next_step(client);
+}
+
+fn print_next_step(client: KnownClient) {
+    for line in next_step_lines(client) {
+        println!("{line}");
+    }
+}
+
+pub(super) fn next_step_lines(client: KnownClient) -> &'static [&'static str] {
+    match client {
+        KnownClient::ClaudeCode => {
+            &["  Open Claude Code, run /mcp, and authenticate Driggsby to get started."]
+        }
+        KnownClient::Codex => &[
+            "  Complete the Driggsby sign-in in the browser window opened by Codex.",
+            "  If no browser window opened, run:",
+            "    codex mcp login driggsby",
+        ],
+    }
 }
 
 fn print_auto_setup_failure(client: KnownClient, reason: &str, installer: &McpConfigCommand) {
-    println!("Auto-setup failed for {}: {reason}", client.display_name());
+    println!(
+        "Could not add Driggsby to {}: {reason}",
+        client.display_name()
+    );
     println!();
     print_manual_command(client, installer);
 }
