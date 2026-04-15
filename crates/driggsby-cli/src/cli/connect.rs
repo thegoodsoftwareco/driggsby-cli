@@ -279,7 +279,7 @@ async fn install_known_client(
         return install_desktop_client(client, created);
     };
     let installer = build_installer_command(cli_client, created, mcp_scope);
-    println!("Adding Driggsby to {}...", client.display_name());
+    println!("Adding Driggsby to {} MCP config...", client.display_name());
     flush_stdout()?;
 
     let output = run_config_command(&installer).await;
@@ -361,7 +361,10 @@ fn install_desktop_client(client: KnownClient, created: &CreatedClientGrant) -> 
     let Some(desktop_client) = client.desktop_mcp_client() else {
         return Ok(false);
     };
-    println!("Adding Driggsby to {}...", client.display_name());
+    println!(
+        "Adding Driggsby to {} MCP config file...",
+        client.display_name()
+    );
     flush_stdout()?;
 
     match install_desktop_mcp_config(desktop_client, created) {
