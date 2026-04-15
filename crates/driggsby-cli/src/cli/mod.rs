@@ -18,8 +18,6 @@ Examples:
     version,
     arg_required_else_help = true,
     disable_help_subcommand = true,
-    about = "Set up Driggsby for AI clients.",
-    long_about = "Set up Driggsby for AI clients.\n\n  npx driggsby@latest mcp setup       # set up a client",
     after_help = EXAMPLES,
 )]
 pub struct Cli {
@@ -96,6 +94,8 @@ mod tests {
         assert!(help.contains("npx driggsby@latest mcp setup codex"));
         assert!(!help.contains("npx driggsby@latest mcp setup claude-code -s user"));
         assert!(!help.contains("npx driggsby@latest mcp setup codex --print"));
-        assert!(help.contains("Set up Driggsby MCP clients"));
+        assert!(!help.contains("Driggsby: the MCP server for your money."));
+        assert!(!help.contains("Set up Driggsby for AI clients."));
+        assert!(!help.contains("# set up a client"));
     }
 }
