@@ -56,6 +56,25 @@ generated npm package, and publishes `driggsby` to npm using trusted publishing.
 Release artifacts currently cover macOS arm64, macOS x64, Linux arm64 glibc,
 and Linux x64 glibc.
 
+macOS release artifacts are signed with a Developer ID Application certificate
+and submitted to Apple notarization before the npm package records their
+checksums. Apple signing runs in the protected `apple-signing` GitHub Actions
+environment, which expects these environment secrets:
+
+```text
+APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64
+APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD
+APPLE_NOTARY_KEY_P8_BASE64
+APPLE_NOTARY_KEY_ID
+APPLE_NOTARY_ISSUER_ID
+APPLE_TEAM_ID
+APPLE_CODESIGN_IDENTITY
+```
+
+Release builds may cache Cargo registry and git dependency downloads. They must
+not cache `target/`, Apple signing keychains, Developer ID certificates, notary
+API keys, notarization ZIPs, or signed release artifacts.
+
 ## License
 
 Licensed under the Apache License, Version 2.0. See `LICENSE`.

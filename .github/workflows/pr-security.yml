@@ -195,6 +195,11 @@ jobs:
       - name: Verify pinned GitHub Actions
         run: bash scripts/check_github_action_pins.sh
 
+      - name: Check release shell scripts
+        run: |
+          bash -n scripts/release/*.sh
+          bash scripts/release/test-sign-notarize-macos-artifacts.sh
+
       - name: Install cargo-dist
         shell: bash
         run: bash scripts/release/install-cargo-dist.sh

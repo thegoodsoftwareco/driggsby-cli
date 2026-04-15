@@ -214,6 +214,16 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
+      - name: Restore Cargo dependency caches
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-dist-deps-${{ runner.os }}-${{ matrix.host }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/driggsby-cli/Cargo.toml') }}
+          restore-keys: |
+            cargo-dist-deps-${{ runner.os }}-${{ matrix.host }}-
+            cargo-dist-deps-${{ runner.os }}-
       - name: Fetch local artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -252,15 +262,60 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: artifacts-build-local-${{ join(matrix.targets, '_') }}
+          name: ${{ runner.os == 'macOS' && format('unsigned-macos-build-local-{0}', join(matrix.targets, '_')) || format('artifacts-build-local-{0}', join(matrix.targets, '_')) }}
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
+
+  sign-macos-artifacts:
+    needs:
+      - plan
+      - build-local-artifacts
+    if: ${{ needs.plan.outputs.publishing == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    environment: apple-signing
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Fetch unsigned macOS artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: unsigned-macos-build-local-${{ matrix.target }}
+          path: target/distrib/
+      - name: Sign and notarize macOS artifacts
+        env:
+          APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+        shell: bash
+        run: bash scripts/release/sign-notarize-macos-artifacts.sh target/distrib
+      - name: Upload signed macOS artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: artifacts-build-local-${{ matrix.target }}
+          path: target/distrib/*
 
   build-global-artifacts:
     needs:
       - plan
       - build-local-artifacts
+      - sign-macos-artifacts
     runs-on: "ubuntu-22.04"
     permissions:
       contents: read
