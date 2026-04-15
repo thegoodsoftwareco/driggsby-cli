@@ -116,6 +116,8 @@ validate_artifact_layout() {
 }
 
 prepare_real_signing() {
+  local imported_identity
+
   require_env "APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64"
   require_env "APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD"
   require_env "APPLE_NOTARY_KEY_P8_BASE64"
@@ -156,6 +158,8 @@ prepare_real_signing() {
   security create-keychain -p "$keychain_password" "$keychain_path" >/dev/null
   security set-keychain-settings -lut 600 "$keychain_path" >/dev/null
   security unlock-keychain -p "$keychain_password" "$keychain_path" >/dev/null
+  security list-keychains -d user -s "$keychain_path" >/dev/null
+  security default-keychain -d user -s "$keychain_path" >/dev/null
   security import "$certificate_path" \
     -k "$keychain_path" \
     -P "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
@@ -169,11 +173,15 @@ prepare_real_signing() {
     "$keychain_path" \
     >/dev/null
 
-  if ! security find-identity -v -p codesigning "$keychain_path" |
-    grep -F "$APPLE_CODESIGN_IDENTITY" >/dev/null; then
+  imported_identity="$(
+    security find-identity -v -p codesigning "$keychain_path" |
+      awk -v identity="$APPLE_CODESIGN_IDENTITY" 'index($0, identity) { print $2; found=1; exit } END { if (!found) exit 1 }'
+  )"
+  if [[ -z "$imported_identity" ]]; then
     echo "Configured Developer ID signing identity was not found in the imported certificate." >&2
     exit 1
   fi
+  codesign_identity="$imported_identity"
 }
 
 sign_binary() {
@@ -189,7 +197,7 @@ sign_binary() {
     --force \
     --timestamp \
     --options runtime \
-    --sign "$APPLE_CODESIGN_IDENTITY" \
+    --sign "$codesign_identity" \
     --keychain "$keychain_path" \
     "$binary_path"
   codesign --verify --strict --verbose=2 "$binary_path"
@@ -261,6 +269,7 @@ repack_artifact() {
 require_command "find"
 require_command "grep"
 require_command "head"
+require_command "awk"
 require_command "sed"
 require_command "shasum"
 require_command "sort"
@@ -279,6 +288,7 @@ fi
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/driggsby-macos-sign.XXXXXX")"
 keychain_path="${tmp_dir}/driggsby-signing.keychain-db"
 keychain_password=""
+codesign_identity=""
 certificate_path=""
 notary_key_path=""
 
