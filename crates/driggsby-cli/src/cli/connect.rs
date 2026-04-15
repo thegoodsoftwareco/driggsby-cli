@@ -205,8 +205,8 @@ fn print_manual_command(client: KnownClient, installer: &McpConfigCommand) {
     println!();
     println!("  {}", render_shell_command(installer));
     println!();
-    println!("Driggsby MCP URL:");
-    println!("  {DRIGGSBY_MCP_URL}");
+    println!("After adding it:");
+    print_next_step(client);
 }
 
 fn command_reports_existing_config(output: &std::process::Output) -> bool {
