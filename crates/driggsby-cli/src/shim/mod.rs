@@ -15,7 +15,10 @@ use crate::{
     broker::public_error::PublicBrokerError,
     broker::{
         client::{call_broker_tool, list_broker_tools},
-        grants::{CLIENT_KEY_ENV, ClientGrantCredentials, missing_client_grant_error},
+        grants::{
+            CLIENT_KEY_ENV, ClientGrantCredentials, is_client_grant_connection_error,
+            missing_client_grant_error,
+        },
         launch::ensure_broker_running,
         resolve_secret_store::resolve_secret_store,
     },
@@ -42,7 +45,10 @@ impl ServerHandler for BrokerShimServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> std::result::Result<ListToolsResult, ErrorData> {
-        let remote = self.remote_tools().await.map_err(to_mcp_error)?;
+        let remote = self
+            .remote_tools_for_listing()
+            .await
+            .map_err(to_mcp_error)?;
         let mut tools = vec![local_status_tool().map_err(to_mcp_error)?];
         tools.extend(remote);
         Ok(ListToolsResult {
@@ -95,6 +101,10 @@ impl ServerHandler for BrokerShimServer {
 }
 
 impl BrokerShimServer {
+    async fn remote_tools_for_listing(&self) -> Result<Vec<Tool>> {
+        remote_tools_listing_result(self.remote_tools().await)
+    }
+
     async fn remote_tools(&self) -> Result<Vec<Tool>> {
         let Some(client_credentials) = self.client_credentials.as_ref() else {
             return Ok(Vec::new());
@@ -183,4 +193,36 @@ fn to_mcp_error(error: anyhow::Error) -> ErrorData {
         "Request failed. Verify tool name and arguments, then retry.",
         None,
     )
+}
+
+fn remote_tools_listing_result(result: Result<Vec<Tool>>) -> Result<Vec<Tool>> {
+    match result {
+        Ok(tools) => Ok(tools),
+        Err(error) if is_client_grant_connection_error(&error) => Ok(Vec::new()),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::broker::grants::missing_client_grant_error;
+
+    #[test]
+    fn tool_listing_omits_remote_tools_for_stale_client_grants() -> Result<()> {
+        let tools = remote_tools_listing_result(Err(missing_client_grant_error().into()))?;
+
+        assert!(tools.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn tool_listing_keeps_non_client_grant_errors() {
+        let result = remote_tools_listing_result(Err(anyhow::anyhow!("network failed")));
+
+        let Err(error) = result else {
+            panic!("expected non-client grant error to be preserved");
+        };
+        assert!(error.to_string().contains("network failed"));
+    }
 }

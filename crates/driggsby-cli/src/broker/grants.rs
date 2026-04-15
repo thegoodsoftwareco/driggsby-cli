@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Error, Result};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -12,6 +12,22 @@ use super::{
 pub const CLIENT_KEY_ENV: &str = "DRIGGSBY_CLIENT_KEY";
 
 const CLIENT_GRANT_SCHEMA_VERSION: u8 = 1;
+const MISSING_CLIENT_GRANT_MESSAGE: &str = concat!(
+    "This MCP client is missing its local Driggsby client key.",
+    "\n\nNext:\n  npx driggsby@latest mcp setup"
+);
+const REVOKED_CLIENT_GRANT_MESSAGE: &str = concat!(
+    "This MCP client was revoked on this machine.",
+    "\n\nNext:\n  npx driggsby@latest mcp setup"
+);
+const UNKNOWN_CLIENT_GRANT_MESSAGE: &str = concat!(
+    "This MCP client is not authorized on this machine. Its local Driggsby config may be stale.",
+    "\n\nNext:\n  npx driggsby@latest mcp setup"
+);
+const INCOMPLETE_CLIENT_GRANT_STATE_MESSAGE: &str = concat!(
+    "Driggsby CLI setup is incomplete on this machine.",
+    "\n\nNext:\n  npx driggsby@latest mcp setup"
+);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatedClientGrant {
@@ -137,29 +153,49 @@ pub fn verify_client_grant(
     broker_id: &str,
     credentials: &ClientGrantCredentials,
 ) -> Result<()> {
-    let bundle =
-        read_broker_secret_bundle(secret_store, broker_id)?.ok_or_else(not_connected_error)?;
+    let bundle = read_broker_secret_bundle(secret_store, broker_id)?
+        .ok_or_else(incomplete_client_grant_state_error)?;
     let client_key_hash = hash_client_key(&credentials.client_key);
-    if bundle
-        .client_grants
-        .iter()
-        .any(|grant| grant.is_active() && grant.client_key_sha256 == client_key_hash)
-    {
+    for grant in &bundle.client_grants {
+        if grant.schema_version != CLIENT_GRANT_SCHEMA_VERSION
+            || grant.client_key_sha256 != client_key_hash
+        {
+            continue;
+        }
+        if grant.disconnected_at.is_some() {
+            return Err(revoked_client_grant_error().into());
+        }
         return Ok(());
     }
-    Err(not_connected_error().into())
+    Err(unknown_client_grant_error().into())
 }
 
 pub fn missing_client_grant_error() -> PublicBrokerError {
-    PublicBrokerError::new(
-        "Client not connected to Driggsby.\n\nNext:\n  npx driggsby@latest mcp setup",
-    )
+    PublicBrokerError::new(MISSING_CLIENT_GRANT_MESSAGE)
 }
 
-fn not_connected_error() -> PublicBrokerError {
-    PublicBrokerError::new(
-        "Client not connected or was disconnected.\n\nNext:\n  npx driggsby@latest mcp setup",
-    )
+pub fn is_client_grant_connection_error(error: &Error) -> bool {
+    error
+        .downcast_ref::<PublicBrokerError>()
+        .is_some_and(|public_error| {
+            let message = public_error.message();
+            message == MISSING_CLIENT_GRANT_MESSAGE
+                || message == REVOKED_CLIENT_GRANT_MESSAGE
+                || message == UNKNOWN_CLIENT_GRANT_MESSAGE
+                || message == INCOMPLETE_CLIENT_GRANT_STATE_MESSAGE
+        })
+}
+
+fn incomplete_client_grant_state_error() -> PublicBrokerError {
+    PublicBrokerError::new(INCOMPLETE_CLIENT_GRANT_STATE_MESSAGE)
+}
+
+fn revoked_client_grant_error() -> PublicBrokerError {
+    PublicBrokerError::new(REVOKED_CLIENT_GRANT_MESSAGE)
+}
+
+fn unknown_client_grant_error() -> PublicBrokerError {
+    PublicBrokerError::new(UNKNOWN_CLIENT_GRANT_MESSAGE)
 }
 
 fn generate_token(prefix: &str, byte_count: usize) -> String {
@@ -266,7 +302,32 @@ mod tests {
         )
         .err()
         .map(|error| error.to_string());
-        assert!(error.is_some_and(|message| message.contains("not connected")));
+        assert!(error.is_some_and(|message| message.contains("was revoked on this machine")));
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_client_key_reports_stale_local_config() -> Result<()> {
+        let store = TestSecretStore::default();
+        let broker_id = "broker-id";
+        let bundle = crate::broker::secrets::BrokerSecretBundle::new(
+            "local-token".to_string(),
+            test_private_jwk(),
+        );
+        crate::broker::secrets::write_broker_secret_bundle(&store, broker_id, &bundle)?;
+
+        create_client_grant(&store, broker_id, "Codex", Some("codex"))?;
+
+        let error = verify_client_grant(
+            &store,
+            broker_id,
+            &ClientGrantCredentials {
+                client_key: "dby_client_v1_unknown".to_string(),
+            },
+        )
+        .err()
+        .map(|error| error.to_string());
+        assert!(error.is_some_and(|message| message.contains("config may be stale")));
         Ok(())
     }
 
