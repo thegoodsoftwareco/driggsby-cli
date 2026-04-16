@@ -1,10 +1,15 @@
 use std::{
     io::{self, IsTerminal, Write as _},
+    process::Stdio,
     time::Duration,
 };
 
 use anyhow::{Result, bail};
-use tokio::process::Command as TokioCommand;
+use tokio::{
+    io::{AsyncRead, AsyncReadExt},
+    process::Command as TokioCommand,
+    task::JoinHandle,
+};
 
 use crate::{
     cli::McpScope,
@@ -35,7 +40,7 @@ pub async fn run_setup_command(
     println!("Adding Driggsby to {} MCP config...", client.display_name());
     flush_stdout()?;
 
-    match run_config_command(&installer).await {
+    match run_config_command(&installer, stream_config_output(client)).await {
         Ok(Ok(output)) if output.status.success() => {
             print_success(client);
             Ok(())
@@ -123,9 +128,11 @@ async fn reinstall_existing_client(client: KnownClient, mcp_scope: Option<McpSco
     let remover = build_scoped_remover_command(cli_client, mcp_scope);
     let installer = build_installer_command(cli_client, mcp_scope);
 
-    match run_config_command(&remover).await {
+    let stream_output = stream_config_output(client);
+
+    match run_config_command(&remover, stream_output).await {
         Ok(Ok(output)) if output.status.success() || command_reports_missing_config(&output) => {
-            match run_config_command(&installer).await {
+            match run_config_command(&installer, stream_output).await {
                 Ok(Ok(output)) if output.status.success() => {
                     print_success(client);
                     Ok(())
@@ -153,10 +160,108 @@ async fn reinstall_existing_client(client: KnownClient, mcp_scope: Option<McpSco
 
 async fn run_config_command(
     command: &McpConfigCommand,
+    stream_output: bool,
 ) -> Result<std::io::Result<std::process::Output>, tokio::time::error::Elapsed> {
+    tokio::time::timeout(
+        CLIENT_CONFIG_COMMAND_TIMEOUT,
+        run_config_command_inner(command, stream_output),
+    )
+    .await
+}
+
+async fn run_config_command_inner(
+    command: &McpConfigCommand,
+    stream_output: bool,
+) -> std::io::Result<std::process::Output> {
     let mut process = TokioCommand::new(&command.program);
-    process.args(&command.args).kill_on_drop(true);
-    tokio::time::timeout(CLIENT_CONFIG_COMMAND_TIMEOUT, process.output()).await
+    process
+        .args(&command.args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = process.spawn()?;
+
+    let stdout_task = child.stdout.take().map(|stdout| {
+        tokio::spawn(read_child_output(
+            stdout,
+            OutputStream::Stdout,
+            stream_output,
+        ))
+    });
+    let stderr_task = child.stderr.take().map(|stderr| {
+        tokio::spawn(read_child_output(
+            stderr,
+            OutputStream::Stderr,
+            stream_output,
+        ))
+    });
+
+    let status = child.wait().await?;
+    let stdout = collect_child_output(stdout_task).await?;
+    let stderr = collect_child_output(stderr_task).await?;
+
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+async fn read_child_output(
+    mut reader: impl AsyncRead + Unpin,
+    stream: OutputStream,
+    stream_output: bool,
+) -> std::io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut buffer = [0; 8192];
+
+    loop {
+        let bytes_read = reader.read(&mut buffer).await?;
+        if bytes_read == 0 {
+            return Ok(output);
+        }
+
+        let chunk = &buffer[..bytes_read];
+        output.extend_from_slice(chunk);
+        if stream_output {
+            write_child_output(stream, chunk)?;
+        }
+    }
+}
+
+async fn collect_child_output(
+    task: Option<JoinHandle<std::io::Result<Vec<u8>>>>,
+) -> std::io::Result<Vec<u8>> {
+    let Some(task) = task else {
+        return Ok(Vec::new());
+    };
+    task.await
+        .map_err(|error| std::io::Error::other(format!("Could not read client output: {error}")))?
+}
+
+fn write_child_output(stream: OutputStream, bytes: &[u8]) -> std::io::Result<()> {
+    match stream {
+        OutputStream::Stdout => {
+            let mut stdout = io::stdout().lock();
+            stdout.write_all(bytes)?;
+            stdout.flush()
+        }
+        OutputStream::Stderr => {
+            let mut stderr = io::stderr().lock();
+            stderr.write_all(bytes)?;
+            stderr.flush()
+        }
+    }
+}
+
+fn stream_config_output(client: KnownClient) -> bool {
+    matches!(client, KnownClient::Codex)
 }
 
 fn print_success(client: KnownClient) {

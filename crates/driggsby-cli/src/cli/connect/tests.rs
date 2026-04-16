@@ -41,3 +41,28 @@ fn next_steps_are_client_specific() {
         ]
     );
 }
+
+#[test]
+fn only_codex_streams_client_setup_output() {
+    assert!(!super::stream_config_output(KnownClient::ClaudeCode));
+    assert!(super::stream_config_output(KnownClient::Codex));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn streaming_config_command_still_captures_output() -> anyhow::Result<()> {
+    let command = super::McpConfigCommand {
+        program: "sh".to_string(),
+        args: vec![
+            "-c".to_string(),
+            "printf 'already exists'; printf 'No MCP server found' >&2".to_string(),
+        ],
+    };
+
+    let output = super::run_config_command_inner(&command, true).await?;
+
+    assert!(output.status.success());
+    assert!(super::command_reports_existing_config(&output));
+    assert!(super::command_reports_missing_config(&output));
+    Ok(())
+}
