@@ -9,7 +9,8 @@ const EXAMPLES: &str = "\
 Examples:
   npx driggsby@latest mcp setup
   npx driggsby@latest mcp setup claude-code
-  npx driggsby@latest mcp setup codex";
+  npx driggsby@latest mcp setup codex
+  npx driggsby@latest mcp setup other";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -39,12 +40,12 @@ pub enum McpCommand {
     #[command(
         name = "setup",
         about = "Set up Driggsby for an AI client.",
-        long_about = "Set up Driggsby for an AI client.\n\nRun once per client. This adds Driggsby's MCP URL to the client config. Follow the printed next step to authenticate.\n\nSupported clients: claude-code, codex."
+        long_about = "Set up Driggsby for an AI client.\n\nRun once per client. This adds Driggsby's MCP URL to supported native client configs. Choose other to print OAuth-based remote MCP setup instructions.\n\nSupported clients: claude-code, codex, other."
     )]
     Setup {
-        #[arg(help = "Client ID: claude-code or codex.")]
+        #[arg(help = "Client ID: claude-code, codex, or other.")]
         client: Option<String>,
-        #[arg(long, help = "Print the setup command instead of running it.")]
+        #[arg(long, help = "Print the native setup command instead of running it.")]
         print: bool,
         #[arg(
             short = 's',
@@ -92,6 +93,7 @@ mod tests {
         assert!(help.contains("npx driggsby@latest mcp setup"));
         assert!(help.contains("npx driggsby@latest mcp setup claude-code"));
         assert!(help.contains("npx driggsby@latest mcp setup codex"));
+        assert!(help.contains("npx driggsby@latest mcp setup other"));
         assert!(!help.contains("npx driggsby@latest mcp setup claude-code -s user"));
         assert!(!help.contains("npx driggsby@latest mcp setup codex --print"));
         assert!(!help.contains("Driggsby: the MCP server for your money."));

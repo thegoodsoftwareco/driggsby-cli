@@ -17,8 +17,8 @@ use crate::{
     cli::client_id,
     cli::known_client::KnownClient,
     cli::supported_mcp_config::{
-        DRIGGSBY_MCP_URL, McpConfigCommand, build_installer_command, build_scoped_remover_command,
-        render_shell_command,
+        CliMcpClient, DRIGGSBY_MCP_URL, McpConfigCommand, build_installer_command,
+        build_scoped_remover_command, render_shell_command,
     },
 };
 
@@ -44,7 +44,12 @@ pub async fn run_setup_command(
     let client = resolve_client(requested_client)?;
     validate_mcp_scope(client, mcp_scope)?;
 
-    let installer = build_installer_command(client.cli_mcp_client(), mcp_scope);
+    let Some(cli_client) = client.cli_mcp_client() else {
+        print_other_client_instructions();
+        return Ok(());
+    };
+
+    let installer = build_installer_command(cli_client, mcp_scope);
     if print {
         print_manual_command(client, &installer);
         return Ok(());
@@ -59,7 +64,7 @@ pub async fn run_setup_command(
             Ok(())
         }
         Ok(Ok(output)) if command_reports_existing_config(&output) => {
-            reinstall_existing_client(client, mcp_scope).await
+            reinstall_existing_client(client, cli_client, mcp_scope).await
         }
         Ok(Ok(_)) => {
             print_auto_setup_failure(client, "The client command returned an error.", &installer);
@@ -94,10 +99,12 @@ fn resolve_client(requested_client: Option<String>) -> Result<KnownClient> {
 pub(super) fn parse_client(value: &str) -> Result<KnownClient> {
     let canonical = client_id::canonicalize(value);
     if canonical.is_empty() {
-        bail!("Client is required.\n\nSupported clients:\n  claude-code\n  codex");
+        bail!("Client is required.\n\nSupported clients:\n  claude-code\n  codex\n  other");
     }
     let Some(client) = KnownClient::from_client_id(&canonical) else {
-        bail!("Unsupported client: {canonical}\n\nSupported clients:\n  claude-code\n  codex");
+        bail!(
+            "Unsupported client: {canonical}\n\nSupported clients:\n  claude-code\n  codex\n  other"
+        );
     };
     Ok(client)
 }
@@ -111,22 +118,26 @@ pub(super) fn validate_mcp_scope(client: KnownClient, mcp_scope: Option<McpScope
 
 fn prompt_for_client() -> Result<KnownClient> {
     if !io::stdin().is_terminal() {
-        bail!("Pass a client name.\n\nExample:\n  npx driggsby@latest mcp setup claude-code");
+        bail!(
+            "Pass a client name.\n\nExamples:\n  npx driggsby@latest mcp setup claude-code\n  npx driggsby@latest mcp setup codex\n  npx driggsby@latest mcp setup other"
+        );
     }
 
     println!("Which client are you setting up?");
     println!();
     println!("  1. Claude Code");
     println!("  2. Codex");
+    println!("  3. Other");
     println!();
-    print!("Choose 1-2: ");
+    print!("Choose 1-3: ");
     flush_stdout()?;
 
     let choice = read_trimmed_line()?;
     match choice.as_str() {
         "1" => Ok(KnownClient::ClaudeCode),
         "2" => Ok(KnownClient::Codex),
-        _ => bail!("Choose 1 or 2."),
+        "3" => Ok(KnownClient::Other),
+        _ => bail!("Choose 1, 2, or 3."),
     }
 }
 
@@ -136,8 +147,11 @@ fn read_trimmed_line() -> Result<String> {
     Ok(line.trim().to_string())
 }
 
-async fn reinstall_existing_client(client: KnownClient, mcp_scope: Option<McpScope>) -> Result<()> {
-    let cli_client = client.cli_mcp_client();
+async fn reinstall_existing_client(
+    client: KnownClient,
+    cli_client: CliMcpClient,
+    mcp_scope: Option<McpScope>,
+) -> Result<()> {
     let remover = build_scoped_remover_command(cli_client, mcp_scope);
     let installer = build_installer_command(cli_client, mcp_scope);
 
@@ -373,7 +387,32 @@ pub(super) fn next_step_lines(client: KnownClient) -> &'static [&'static str] {
             "  If no browser window opened, run:",
             "    codex mcp login driggsby",
         ],
+        KnownClient::Other => other_client_instruction_lines(),
     }
+}
+
+fn print_other_client_instructions() {
+    println!("Driggsby currently supports OAuth-based remote MCP only.");
+    println!();
+    println!("Driggsby OAuth MCP URL:");
+    println!("  {DRIGGSBY_MCP_URL}");
+    println!();
+    println!("For another MCP client or agent:");
+    for line in other_client_instruction_lines() {
+        println!("{line}");
+    }
+}
+
+pub(super) fn other_client_instruction_lines() -> &'static [&'static str] {
+    &[
+        "  Add a remote MCP server named driggsby.",
+        "  Set its URL to https://app.driggsby.com/mcp.",
+        "  Choose OAuth authentication if the client asks.",
+        "  Complete the Driggsby browser sign-in when prompted.",
+        "",
+        "Requirement:",
+        "  The MCP client must support OAuth-based MCP authentication.",
+    ]
 }
 
 fn print_auto_setup_failure(client: KnownClient, reason: &str, installer: &McpConfigCommand) {

@@ -20,7 +20,12 @@ Choose a supported client directly:
 ```bash
 npx driggsby@latest mcp setup claude-code
 npx driggsby@latest mcp setup codex
+npx driggsby@latest mcp setup other
 ```
+
+Choose `other` for another OAuth-capable MCP client. Driggsby currently supports
+only OAuth-based remote MCP. Configure the MCP URL above with server name
+`driggsby`.
 
 Claude Code MCP scope can be set explicitly with `-s`. Driggsby defaults
 Claude Code setup to user scope.
@@ -36,10 +41,11 @@ Print the native client command without running it:
 npx driggsby@latest mcp setup codex --print
 ```
 
-## Supported Clients
+## Setup Options
 
 - Claude Code
 - Codex
+- Other OAuth-capable MCP clients
 
 ## License
 

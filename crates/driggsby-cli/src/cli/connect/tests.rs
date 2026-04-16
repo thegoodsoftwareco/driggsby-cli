@@ -5,6 +5,7 @@ fn parses_supported_clients() -> anyhow::Result<()> {
     let cases = [
         ("claude-code", KnownClient::ClaudeCode),
         ("codex", KnownClient::Codex),
+        ("other", KnownClient::Other),
     ];
     for (input, expected) in cases {
         assert_eq!(super::parse_client(input)?, expected);
@@ -24,6 +25,7 @@ fn mcp_scope_is_only_supported_for_claude_code() {
     let scope = Some(McpScope::User);
     assert!(super::validate_mcp_scope(KnownClient::ClaudeCode, scope).is_ok());
     assert!(super::validate_mcp_scope(KnownClient::Codex, scope).is_err());
+    assert!(super::validate_mcp_scope(KnownClient::Other, scope).is_err());
 }
 
 #[test]
@@ -40,12 +42,25 @@ fn next_steps_are_client_specific() {
             "    codex mcp login driggsby",
         ]
     );
+    assert_eq!(
+        super::next_step_lines(KnownClient::Other),
+        [
+            "  Add a remote MCP server named driggsby.",
+            "  Set its URL to https://app.driggsby.com/mcp.",
+            "  Choose OAuth authentication if the client asks.",
+            "  Complete the Driggsby browser sign-in when prompted.",
+            "",
+            "Requirement:",
+            "  The MCP client must support OAuth-based MCP authentication.",
+        ]
+    );
 }
 
 #[test]
 fn only_codex_streams_client_setup_output() {
     assert!(!super::stream_config_output(KnownClient::ClaudeCode));
     assert!(super::stream_config_output(KnownClient::Codex));
+    assert!(!super::stream_config_output(KnownClient::Other));
 }
 
 #[test]

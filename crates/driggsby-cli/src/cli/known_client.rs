@@ -4,11 +4,12 @@ use crate::cli::supported_mcp_config::CliMcpClient;
 pub(super) enum KnownClient {
     ClaudeCode,
     Codex,
+    Other,
 }
 
 impl KnownClient {
     pub(super) fn from_client_id(client_id: &str) -> Option<Self> {
-        [Self::ClaudeCode, Self::Codex]
+        [Self::ClaudeCode, Self::Codex, Self::Other]
             .into_iter()
             .find(|client| client.integration_id() == client_id)
     }
@@ -17,6 +18,7 @@ impl KnownClient {
         match self {
             Self::ClaudeCode => "claude-code",
             Self::Codex => "codex",
+            Self::Other => "other",
         }
     }
 
@@ -24,13 +26,15 @@ impl KnownClient {
         match self {
             Self::ClaudeCode => "Claude Code",
             Self::Codex => "Codex",
+            Self::Other => "Other MCP client",
         }
     }
 
-    pub(super) fn cli_mcp_client(self) -> CliMcpClient {
+    pub(super) fn cli_mcp_client(self) -> Option<CliMcpClient> {
         match self {
-            Self::ClaudeCode => CliMcpClient::ClaudeCode,
-            Self::Codex => CliMcpClient::Codex,
+            Self::ClaudeCode => Some(CliMcpClient::ClaudeCode),
+            Self::Codex => Some(CliMcpClient::Codex),
+            Self::Other => None,
         }
     }
 }
