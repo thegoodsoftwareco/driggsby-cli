@@ -41,3 +41,60 @@ fn next_steps_are_client_specific() {
         ]
     );
 }
+
+#[test]
+fn only_codex_streams_client_setup_output() {
+    assert!(!super::stream_config_output(KnownClient::ClaudeCode));
+    assert!(super::stream_config_output(KnownClient::Codex));
+}
+
+#[test]
+fn remote_sign_in_hint_waits_for_loopback_redirect_and_browser_failure() {
+    let mut state = super::RemoteSignInHintState::default();
+
+    assert!(!state.observe(b"Authorize by opening this URL: "));
+    assert!(!state.observe(
+        b"https://app.driggsby.com/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A44489%2Fcallback",
+    ));
+    assert!(state.observe(b"(Browser launch failed; please copy the URL above manually.)"));
+}
+
+#[test]
+fn remote_sign_in_hint_prints_once() {
+    let mut state = super::RemoteSignInHintState::default();
+
+    assert!(
+        state.observe(
+            b"redirect_uri=http%3A%2F%2F127.0.0.1%3A44489%2Fcallback Browser launch failed",
+        )
+    );
+    assert!(!state.observe(b"Browser launch failed"));
+}
+
+#[test]
+fn remote_sign_in_hint_does_not_trigger_for_non_loopback_redirects() {
+    let mut state = super::RemoteSignInHintState::default();
+
+    assert!(
+        !state.observe(b"redirect_uri=https%3A%2F%2Fexample.com%2Fcallback Browser launch failed",)
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn streaming_config_command_still_captures_output() -> anyhow::Result<()> {
+    let command = super::McpConfigCommand {
+        program: "sh".to_string(),
+        args: vec![
+            "-c".to_string(),
+            "printf 'already exists'; printf 'No MCP server found' >&2".to_string(),
+        ],
+    };
+
+    let output = super::run_config_command_inner(&command, true).await?;
+
+    assert!(output.status.success());
+    assert!(super::command_reports_existing_config(&output));
+    assert!(super::command_reports_missing_config(&output));
+    Ok(())
+}

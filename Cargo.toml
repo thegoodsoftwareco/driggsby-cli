@@ -20,4 +20,4 @@ lto = "thin"
 [workspace.dependencies]
 anyhow = "1.0.102"
 clap = { version = "4.6.0", features = ["derive", "wrap_help"] }
-tokio = { version = "1.51.1", features = ["macros", "process", "rt-multi-thread", "time"] }
+tokio = { version = "1.51.1", features = ["io-util", "macros", "process", "rt-multi-thread", "time"] }

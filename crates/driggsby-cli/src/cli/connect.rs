@@ -1,10 +1,16 @@
 use std::{
     io::{self, IsTerminal, Write as _},
+    process::Stdio,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
 use anyhow::{Result, bail};
-use tokio::process::Command as TokioCommand;
+use tokio::{
+    io::{AsyncRead, AsyncReadExt},
+    process::Command as TokioCommand,
+    task::JoinHandle,
+};
 
 use crate::{
     cli::McpScope,
@@ -17,6 +23,18 @@ use crate::{
 };
 
 const CLIENT_CONFIG_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
+const LOOPBACK_REDIRECT_NEEDLE: &str = "redirect_uri=http%3A%2F%2F127.0.0.1%3A";
+const BROWSER_LAUNCH_FAILED_NEEDLE: &str = "Browser launch failed";
+const REMOTE_SIGN_IN_HINT_RECENT_CHARS: usize = 512;
+const REMOTE_SIGN_IN_HINT: &str = "
+Remote sign-in note:
+  The URL above redirects to 127.0.0.1 on this machine.
+  If you opened this terminal over SSH, use SSH local port forwarding before
+  opening the URL in your local browser.
+
+If sign-in times out, run:
+  codex mcp login driggsby
+";
 
 pub async fn run_setup_command(
     requested_client: Option<String>,
@@ -35,7 +53,7 @@ pub async fn run_setup_command(
     println!("Adding Driggsby to {} MCP config...", client.display_name());
     flush_stdout()?;
 
-    match run_config_command(&installer).await {
+    match run_config_command(&installer, stream_config_output(client)).await {
         Ok(Ok(output)) if output.status.success() => {
             print_success(client);
             Ok(())
@@ -123,9 +141,11 @@ async fn reinstall_existing_client(client: KnownClient, mcp_scope: Option<McpSco
     let remover = build_scoped_remover_command(cli_client, mcp_scope);
     let installer = build_installer_command(cli_client, mcp_scope);
 
-    match run_config_command(&remover).await {
+    let stream_output = stream_config_output(client);
+
+    match run_config_command(&remover, stream_output).await {
         Ok(Ok(output)) if output.status.success() || command_reports_missing_config(&output) => {
-            match run_config_command(&installer).await {
+            match run_config_command(&installer, stream_output).await {
                 Ok(Ok(output)) if output.status.success() => {
                     print_success(client);
                     Ok(())
@@ -153,10 +173,178 @@ async fn reinstall_existing_client(client: KnownClient, mcp_scope: Option<McpSco
 
 async fn run_config_command(
     command: &McpConfigCommand,
+    stream_output: bool,
 ) -> Result<std::io::Result<std::process::Output>, tokio::time::error::Elapsed> {
+    tokio::time::timeout(
+        CLIENT_CONFIG_COMMAND_TIMEOUT,
+        run_config_command_inner(command, stream_output),
+    )
+    .await
+}
+
+async fn run_config_command_inner(
+    command: &McpConfigCommand,
+    stream_output: bool,
+) -> std::io::Result<std::process::Output> {
     let mut process = TokioCommand::new(&command.program);
-    process.args(&command.args).kill_on_drop(true);
-    tokio::time::timeout(CLIENT_CONFIG_COMMAND_TIMEOUT, process.output()).await
+    process
+        .args(&command.args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = process.spawn()?;
+    let remote_sign_in_hint =
+        stream_output.then(|| Arc::new(Mutex::new(RemoteSignInHintState::default())));
+
+    let stdout_task = child.stdout.take().map(|stdout| {
+        tokio::spawn(read_child_output(
+            stdout,
+            OutputStream::Stdout,
+            stream_output,
+            remote_sign_in_hint.clone(),
+        ))
+    });
+    let stderr_task = child.stderr.take().map(|stderr| {
+        tokio::spawn(read_child_output(
+            stderr,
+            OutputStream::Stderr,
+            stream_output,
+            remote_sign_in_hint.clone(),
+        ))
+    });
+
+    let status = child.wait().await?;
+    let stdout = collect_child_output(stdout_task).await?;
+    let stderr = collect_child_output(stderr_task).await?;
+
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+async fn read_child_output(
+    mut reader: impl AsyncRead + Unpin,
+    stream: OutputStream,
+    stream_output: bool,
+    remote_sign_in_hint: Option<Arc<Mutex<RemoteSignInHintState>>>,
+) -> std::io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut buffer = [0; 8192];
+
+    loop {
+        let bytes_read = reader.read(&mut buffer).await?;
+        if bytes_read == 0 {
+            return Ok(output);
+        }
+
+        let chunk = &buffer[..bytes_read];
+        output.extend_from_slice(chunk);
+        if stream_output {
+            write_child_output(stream, chunk)?;
+            maybe_print_remote_sign_in_hint(&remote_sign_in_hint, chunk)?;
+        }
+    }
+}
+
+async fn collect_child_output(
+    task: Option<JoinHandle<std::io::Result<Vec<u8>>>>,
+) -> std::io::Result<Vec<u8>> {
+    let Some(task) = task else {
+        return Ok(Vec::new());
+    };
+    task.await
+        .map_err(|error| std::io::Error::other(format!("Could not read client output: {error}")))?
+}
+
+fn write_child_output(stream: OutputStream, bytes: &[u8]) -> std::io::Result<()> {
+    match stream {
+        OutputStream::Stdout => {
+            let mut stdout = io::stdout().lock();
+            stdout.write_all(bytes)?;
+            stdout.flush()
+        }
+        OutputStream::Stderr => {
+            let mut stderr = io::stderr().lock();
+            stderr.write_all(bytes)?;
+            stderr.flush()
+        }
+    }
+}
+
+#[derive(Default)]
+struct RemoteSignInHintState {
+    recent_output: String,
+    saw_loopback_redirect: bool,
+    saw_browser_launch_failed: bool,
+    printed: bool,
+}
+
+impl RemoteSignInHintState {
+    fn observe(&mut self, bytes: &[u8]) -> bool {
+        self.recent_output.push_str(&String::from_utf8_lossy(bytes));
+        if self.recent_output.contains(LOOPBACK_REDIRECT_NEEDLE) {
+            self.saw_loopback_redirect = true;
+        }
+        if self.recent_output.contains(BROWSER_LAUNCH_FAILED_NEEDLE) {
+            self.saw_browser_launch_failed = true;
+        }
+        self.trim_recent_output();
+
+        if self.printed || !self.saw_loopback_redirect || !self.saw_browser_launch_failed {
+            return false;
+        }
+
+        self.printed = true;
+        true
+    }
+
+    fn trim_recent_output(&mut self) {
+        if self.recent_output.chars().count() <= REMOTE_SIGN_IN_HINT_RECENT_CHARS {
+            return;
+        }
+
+        self.recent_output = self
+            .recent_output
+            .chars()
+            .rev()
+            .take(REMOTE_SIGN_IN_HINT_RECENT_CHARS)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+    }
+}
+
+fn maybe_print_remote_sign_in_hint(
+    remote_sign_in_hint: &Option<Arc<Mutex<RemoteSignInHintState>>>,
+    bytes: &[u8],
+) -> std::io::Result<()> {
+    let Some(remote_sign_in_hint) = remote_sign_in_hint else {
+        return Ok(());
+    };
+    let should_print = remote_sign_in_hint
+        .lock()
+        .map_err(|_| std::io::Error::other("Could not inspect client output."))?
+        .observe(bytes);
+
+    if should_print {
+        let mut stdout = io::stdout().lock();
+        stdout.write_all(REMOTE_SIGN_IN_HINT.as_bytes())?;
+        stdout.flush()?;
+    }
+    Ok(())
+}
+
+fn stream_config_output(client: KnownClient) -> bool {
+    matches!(client, KnownClient::Codex)
 }
 
 fn print_success(client: KnownClient) {
