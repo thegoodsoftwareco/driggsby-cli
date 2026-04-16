@@ -1,6 +1,7 @@
 use std::{
     io::{self, IsTerminal, Write as _},
     process::Stdio,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -22,6 +23,18 @@ use crate::{
 };
 
 const CLIENT_CONFIG_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
+const LOOPBACK_REDIRECT_NEEDLE: &str = "redirect_uri=http%3A%2F%2F127.0.0.1%3A";
+const BROWSER_LAUNCH_FAILED_NEEDLE: &str = "Browser launch failed";
+const REMOTE_SIGN_IN_HINT_RECENT_CHARS: usize = 512;
+const REMOTE_SIGN_IN_HINT: &str = "
+Remote sign-in note:
+  The URL above redirects to 127.0.0.1 on this machine.
+  If you opened this terminal over SSH, use SSH local port forwarding before
+  opening the URL in your local browser.
+
+If sign-in times out, run:
+  codex mcp login driggsby
+";
 
 pub async fn run_setup_command(
     requested_client: Option<String>,
@@ -180,12 +193,15 @@ async fn run_config_command_inner(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     let mut child = process.spawn()?;
+    let remote_sign_in_hint =
+        stream_output.then(|| Arc::new(Mutex::new(RemoteSignInHintState::default())));
 
     let stdout_task = child.stdout.take().map(|stdout| {
         tokio::spawn(read_child_output(
             stdout,
             OutputStream::Stdout,
             stream_output,
+            remote_sign_in_hint.clone(),
         ))
     });
     let stderr_task = child.stderr.take().map(|stderr| {
@@ -193,6 +209,7 @@ async fn run_config_command_inner(
             stderr,
             OutputStream::Stderr,
             stream_output,
+            remote_sign_in_hint.clone(),
         ))
     });
 
@@ -217,6 +234,7 @@ async fn read_child_output(
     mut reader: impl AsyncRead + Unpin,
     stream: OutputStream,
     stream_output: bool,
+    remote_sign_in_hint: Option<Arc<Mutex<RemoteSignInHintState>>>,
 ) -> std::io::Result<Vec<u8>> {
     let mut output = Vec::new();
     let mut buffer = [0; 8192];
@@ -231,6 +249,7 @@ async fn read_child_output(
         output.extend_from_slice(chunk);
         if stream_output {
             write_child_output(stream, chunk)?;
+            maybe_print_remote_sign_in_hint(&remote_sign_in_hint, chunk)?;
         }
     }
 }
@@ -258,6 +277,70 @@ fn write_child_output(stream: OutputStream, bytes: &[u8]) -> std::io::Result<()>
             stderr.flush()
         }
     }
+}
+
+#[derive(Default)]
+struct RemoteSignInHintState {
+    recent_output: String,
+    saw_loopback_redirect: bool,
+    saw_browser_launch_failed: bool,
+    printed: bool,
+}
+
+impl RemoteSignInHintState {
+    fn observe(&mut self, bytes: &[u8]) -> bool {
+        self.recent_output.push_str(&String::from_utf8_lossy(bytes));
+        if self.recent_output.contains(LOOPBACK_REDIRECT_NEEDLE) {
+            self.saw_loopback_redirect = true;
+        }
+        if self.recent_output.contains(BROWSER_LAUNCH_FAILED_NEEDLE) {
+            self.saw_browser_launch_failed = true;
+        }
+        self.trim_recent_output();
+
+        if self.printed || !self.saw_loopback_redirect || !self.saw_browser_launch_failed {
+            return false;
+        }
+
+        self.printed = true;
+        true
+    }
+
+    fn trim_recent_output(&mut self) {
+        if self.recent_output.chars().count() <= REMOTE_SIGN_IN_HINT_RECENT_CHARS {
+            return;
+        }
+
+        self.recent_output = self
+            .recent_output
+            .chars()
+            .rev()
+            .take(REMOTE_SIGN_IN_HINT_RECENT_CHARS)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+    }
+}
+
+fn maybe_print_remote_sign_in_hint(
+    remote_sign_in_hint: &Option<Arc<Mutex<RemoteSignInHintState>>>,
+    bytes: &[u8],
+) -> std::io::Result<()> {
+    let Some(remote_sign_in_hint) = remote_sign_in_hint else {
+        return Ok(());
+    };
+    let should_print = remote_sign_in_hint
+        .lock()
+        .map_err(|_| std::io::Error::other("Could not inspect client output."))?
+        .observe(bytes);
+
+    if should_print {
+        let mut stdout = io::stdout().lock();
+        stdout.write_all(REMOTE_SIGN_IN_HINT.as_bytes())?;
+        stdout.flush()?;
+    }
+    Ok(())
 }
 
 fn stream_config_output(client: KnownClient) -> bool {
