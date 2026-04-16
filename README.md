@@ -1,7 +1,7 @@
 # Driggsby
 
 [Driggsby](https://driggsby.com) is an MCP server for personal finance. You
-link accounts through [Plaid](https://plaid.com), and your AI client gets
+link accounts through Plaid, and your AI client gets
 read-only MCP tools for transactions, balances, investments, and debts.
 
 ## Setup
