@@ -1,0 +1,2 @@
+# Release tooling is maintained in TypeScript, but the public CLI is Rust.
+scripts/release/*.ts linguist-detectable=false
