@@ -1,6 +1,6 @@
 {
   "name": "@driggsby/cli-release-tools",
-  "version": "0.1.38",
+  "version": "0.1.39",
   "private": true,
   "type": "module",
   "scripts": {
