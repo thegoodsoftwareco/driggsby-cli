@@ -6,7 +6,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 rust-version = "1.94"
-version = "0.1.41"
+version = "0.1.42"
 repository = "https://github.com/driggsby/driggsby"
 license = "Apache-2.0"
 
