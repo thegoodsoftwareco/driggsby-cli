@@ -265,7 +265,7 @@ jobs:
 
           const version = process.argv[2];
           const pkg = JSON.parse(fs.readFileSync("generated-package.json", "utf8"));
-          const expectedUrl = `https://github.com/thegoodsoftwareco/driggsby-cli/releases/download/driggsby-v${version}`;
+          const expectedUrl = `https://github.com/driggsby/driggsby/releases/download/driggsby-v${version}`;
 
           if (pkg.name !== "driggsby") {
             throw new Error(`expected npm package name driggsby, got ${pkg.name}`);

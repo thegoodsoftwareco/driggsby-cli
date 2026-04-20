@@ -1,9 +1,9 @@
 {
   "name": "driggsby",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "description": "CLI helper for configuring Driggsby MCP clients",
   "license": "Apache-2.0",
-  "repository": "https://github.com/thegoodsoftwareco/driggsby-cli",
+  "repository": "https://github.com/driggsby/driggsby",
   "type": "module",
   "bin": {
     "driggsby": "bin/driggsby"
@@ -24,7 +24,7 @@
     "package.json"
   ],
   "driggsbyArtifacts": {
-    "baseUrl": "https://github.com/thegoodsoftwareco/driggsby-cli/releases/download/driggsby-v0.1.40",
+    "baseUrl": "https://github.com/driggsby/driggsby/releases/download/driggsby-v0.1.41",
     "checksums": {},
     "supportedPlatforms": {
       "aarch64-apple-darwin": {
