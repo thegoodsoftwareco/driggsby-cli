@@ -49,7 +49,7 @@ function buildPackageJson(packageVersion: string): NpmPackageJson {
 
   packageJson.version = packageVersion;
   packageJson.driggsbyArtifacts.baseUrl =
-    `https://github.com/thegoodsoftwareco/driggsby-cli/releases/download/driggsby-v${packageVersion}`;
+    `https://github.com/driggsby/driggsby/releases/download/driggsby-v${packageVersion}`;
   packageJson.driggsbyArtifacts.checksums = {};
 
   for (const platform of Object.values(packageJson.driggsbyArtifacts.supportedPlatforms)) {

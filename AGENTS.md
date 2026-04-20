@@ -265,7 +265,7 @@ Before creating a release tag:
 3. Confirm `npm/driggsby/package.json` points at:
 
 ```text
-https://github.com/thegoodsoftwareco/driggsby-cli/releases/download/driggsby-vX.Y.Z
+https://github.com/driggsby/driggsby/releases/download/driggsby-vX.Y.Z
 ```
 
 4. Run `just verify`.

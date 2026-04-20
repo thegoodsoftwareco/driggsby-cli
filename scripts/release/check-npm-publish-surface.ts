@@ -42,7 +42,7 @@ interface PlatformConfig {
 }
 
 const expectedPackageName = "driggsby";
-const expectedRepository = "thegoodsoftwareco/driggsby-cli";
+const expectedRepository = "driggsby/driggsby";
 const expectedPlatforms = new Set([
   "aarch64-apple-darwin",
   "aarch64-unknown-linux-gnu",
@@ -269,8 +269,8 @@ function assertExpectedArtifactBaseUrl(baseUrl: string, version: string): void {
   const parsedUrl = new URL(baseUrl);
   assertEqual(parsedUrl.protocol, "https:", "artifact URL protocol");
   assertEqual(parsedUrl.hostname, "github.com", "artifact URL host");
-  if (parsedUrl.pathname.includes("/thegoodsoftwareco/driggsby/releases/")) {
-    throw new Error("artifact URL points at the private driggsby repository.");
+  if (parsedUrl.pathname.includes("/thegoodsoftwareco/")) {
+    throw new Error("artifact URL points at the old GitHub organization.");
   }
 }
 

@@ -29,7 +29,7 @@ OAuth-based remote MCP at:
 https://app.driggsby.com/mcp
 ```
 
-See the [GitHub repo](https://github.com/thegoodsoftwareco/driggsby-cli) for
+See the [GitHub repo](https://github.com/driggsby/driggsby) for
 tools, examples, and full documentation.
 
 ## License
